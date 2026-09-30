@@ -1,0 +1,34 @@
+code;lot;designation;unite;prix_unitaire_ht
+GO-01;02 Gros œuvre;Voile béton armé ép. 20 cm, coffrage 2 faces;m2;165
+GO-02;02 Gros œuvre;Voile béton armé ép. 16 cm, coffrage 2 faces;m2;145
+GO-03;02 Gros œuvre;Mur en blocs béton creux ép. 20 cm;m2;68
+GO-04;02 Gros œuvre;Plancher dalle pleine béton armé ép. 20 cm;m2;95
+GO-05;02 Gros œuvre;Plancher dalle pleine béton armé ép. 22 cm;m2;104
+GO-06;02 Gros œuvre;Dallage béton armé sur terre-plein ép. 15 cm;m2;58
+GO-07;02 Gros œuvre;Poteau béton armé coulé en place;m3;980
+GO-08;02 Gros œuvre;Poutre béton armé coulée en place;m3;1050
+GO-09;02 Gros œuvre;Semelle de fondation béton armé;m3;320
+ET-01;03 Étanchéité;Étanchéité bicouche toiture-terrasse avec isolant PSE 120 mm;m2;88
+ET-02;03 Étanchéité;Relevé d'étanchéité en acrotère;ml;42
+ME-01;05 Menuiseries extérieures;Fenêtre aluminium à frappe, double vitrage 4/16/4;m2;620
+ME-02;05 Menuiseries extérieures;Fenêtre PVC à frappe, double vitrage 4/16/4;m2;420
+ME-03;05 Menuiseries extérieures;Porte d'entrée aluminium vitrée 1 ou 2 vantaux;u;2800
+ME-04;05 Menuiseries extérieures;Mur-rideau aluminium;m2;850
+MI-01;06 Menuiseries intérieures;Bloc-porte bois âme alvéolaire 83x204;u;390
+MI-02;06 Menuiseries intérieures;Bloc-porte bois âme pleine 93x204;u;470
+MI-03;06 Menuiseries intérieures;Bloc-porte coupe-feu EI30 93x204 avec ferme-porte;u;890
+MI-04;06 Menuiseries intérieures;Bloc-porte technique métallique;u;1200
+CL-01;07 Cloisons doublages;Cloison plaques de plâtre 72/48, 1 BA13 par face;m2;42
+CL-02;07 Cloisons doublages;Cloison plaques de plâtre 98/48 acoustique, 2 BA13 par face;m2;58
+CL-03;07 Cloisons doublages;Cloison plaques de plâtre hydrofuge 72/48, BA13 H;m2;48
+CL-04;07 Cloisons doublages;Doublage collé isolant PSE 10+100;m2;36
+CL-05;07 Cloisons doublages;Doublage laine minérale sur ossature métallique;m2;44
+CL-06;07 Cloisons doublages;Cloison plaques de plâtre hydrofuge 98/48, 2 BA13 H par face;m2;64
+SR-01;08 Serrurerie;Garde-corps métallique à barreaudage;ml;260
+SR-02;08 Serrurerie;Garde-corps verre feuilleté sur profil aluminium;ml;480
+RS-01;09 Revêtements de sols;Carrelage grès cérame 60x60 collé;m2;72
+RS-02;09 Revêtements de sols;Sol souple PVC en lés;m2;45
+FP-01;10 Faux plafonds;Faux plafond dalles minérales 600x600 sur ossature apparente;m2;38
+FP-02;10 Faux plafonds;Faux plafond plaques de plâtre hydrofuges sur ossature;m2;52
+PL-01;11 Plomberie sanitaires;WC suspendu avec bâti-support, cuvette et plaque de commande;u;780
+PL-02;11 Plomberie sanitaires;Lavabo sur colonne avec robinetterie temporisée;u;520

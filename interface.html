@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SurveIA — de la maquette au prix</title>
+<style>
+  :root {
+    --fond: #f4f2ee; --carte: #ffffff; --encre: #1b2430; --doux: #5d6674; --trait: #e3dfd8;
+    --accent: #d9822b; --accent-fonce: #b4661a; --bleu: #1f3a5f; --bleu-clair: #e8eef6;
+    --vert: #2f7d4f; --vert-fond: #e3f1e8; --ambre: #9a6200; --ambre-fond: #fcefd9;
+    --rouge: #b3372f; --rouge-fond: #f9e1df; --ombre: 0 1px 2px rgba(27,36,48,.06), 0 4px 16px rgba(27,36,48,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fond: #14181e; --carte: #1c222b; --encre: #e8e6e1; --doux: #9aa3af; --trait: #2c343f;
+      --bleu: #8fb3de; --bleu-clair: #22303f; --vert: #6cc08e; --vert-fond: #1d3327;
+      --ambre: #e8b35c; --ambre-fond: #3a2e17; --rouge: #ef8a80; --rouge-fond: #3d2220;
+      --ombre: 0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--encre);
+    font: 15px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; }
+  header { padding: 28px 16px 8px; max-width: 1080px; margin: 0 auto; }
+  .marque { display: flex; align-items: center; gap: 10px; color: var(--accent); font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+  .marque::before { content: ""; width: 22px; height: 6px; background: repeating-linear-gradient(45deg, var(--accent) 0 6px, var(--encre) 6px 12px); border-radius: 2px; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 8px 0 6px; letter-spacing: -.01em; }
+  .sous-titre { color: var(--doux); margin: 0 0 8px; max-width: 760px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 8px 16px 64px; }
+  .etape { background: var(--carte); border: 1px solid var(--trait); border-radius: 12px; box-shadow: var(--ombre);
+    margin: 16px 0; padding: 20px 22px; transition: opacity .2s; }
+  .etape.verrouillee { opacity: .45; pointer-events: none; }
+  .etape h2 { display: flex; align-items: center; gap: 12px; font-size: 17px; margin: 0 0 4px; }
+  .num { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--bleu-clair); color: var(--bleu);
+    display: grid; place-items: center; font-size: 14px; font-weight: 700; }
+  .etape.faite .num { background: var(--vert); color: #fff; }
+  .etape.faite .num::after { content: "✓"; }
+  .etape.faite .num span { display: none; }
+  .aide { color: var(--doux); margin: 0 0 14px 40px; font-size: 14px; }
+  .corps { margin-left: 40px; }
+  label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; }
+  .ligne { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  input[type=password], input[type=text], select {
+    font: inherit; padding: 9px 11px; border: 1px solid var(--trait); border-radius: 8px; background: var(--fond); color: var(--encre); min-width: 0; }
+  input[type=password] { width: 360px; max-width: 100%; font-family: ui-monospace, Consolas, monospace; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer;
+    background: var(--accent); color: #fff; }
+  button:hover { background: var(--accent-fonce); }
+  button.secondaire { background: transparent; color: var(--bleu); border: 1px solid var(--trait); }
+  button.secondaire:hover { background: var(--bleu-clair); }
+  button:disabled { opacity: .5; cursor: default; }
+  .statut { margin-top: 10px; font-size: 14px; min-height: 1.4em; }
+  .statut.ok { color: var(--vert); } .statut.erreur { color: var(--rouge); }
+  .fichier { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px dashed var(--trait);
+    border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--bleu); }
+  .fichier input { display: none; }
+  .ou { color: var(--doux); font-size: 13px; align-self: center; }
+  .note { background: var(--bleu-clair); border-radius: 8px; padding: 10px 14px; font-size: 14px; margin: 12px 0 0; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 6px 0 14px; }
+  .kpi { border: 1px solid var(--trait); border-radius: 10px; padding: 10px 14px; }
+  .kpi .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .l { font-size: 12px; color: var(--doux); }
+  .kpi.fort { background: var(--bleu); border-color: var(--bleu); color: #fff; }
+  .kpi.fort .l { color: rgba(255,255,255,.75); }
+  @media (prefers-color-scheme: dark) { .kpi.fort { color: #0f1620; } .kpi.fort .l { color: rgba(15,22,32,.7); } }
+  .tableau { overflow-x: auto; border: 1px solid var(--trait); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th { text-align: left; font-size: 12px; color: var(--doux); font-weight: 600; background: var(--fond);
+    padding: 8px 10px; border-bottom: 1px solid var(--trait); white-space: nowrap; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--trait); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.lot td { background: var(--bleu-clair); font-weight: 700; color: var(--bleu); }
+  tr.st td { font-weight: 700; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+  .b-haute { background: var(--vert-fond); color: var(--vert); }
+  .b-moyenne { background: var(--ambre-fond); color: var(--ambre); }
+  .b-faible, .b-non { background: var(--rouge-fond); color: var(--rouge); }
+  .petit { font-size: 12.5px; color: var(--doux); }
+  .alerte { color: var(--ambre); font-size: 12.5px; margin-top: 3px; }
+  .attente { display: inline-flex; align-items: center; gap: 10px; color: var(--doux); }
+  .roue { width: 18px; height: 18px; border: 3px solid var(--trait); border-top-color: var(--accent); border-radius: 50%; animation: t 0.9s linear infinite; }
+  @keyframes t { to { transform: rotate(360deg); } }
+  .puces { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .puce { background: var(--fond); color: var(--encre); border: 1px solid var(--trait); font-weight: 500; font-size: 13px; padding: 6px 12px; border-radius: 99px; }
+  .puce:hover { background: var(--bleu-clair); }
+  .reponse { white-space: pre-wrap; background: var(--fond); border-radius: 10px; padding: 14px 16px; margin-top: 12px; font-size: 14.5px; }
+  .question { font-weight: 600; margin-top: 16px; }
+  .cache { display: none !important; }
+  .reglages { margin-top: 12px; font-size: 14px; }
+  .cctp { margin-top: 14px; border: 1px solid var(--trait); border-radius: 10px; padding: 12px 14px; }
+  .art { font-size: 12px; color: var(--bleu); margin-top: 3px; }
+  .ecart { font-size: 12.5px; color: var(--rouge); margin-top: 3px; font-weight: 600; }
+  .note.orange { background: var(--ambre-fond); }
+  .reglages summary { cursor: pointer; color: var(--bleu); font-weight: 600; }
+  label.case { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: 14px; margin: 0 0 10px; }
+  .hypo { font-size: 12px; color: var(--doux); margin-top: 3px; font-style: italic; }
+  footer { color: var(--doux); font-size: 12.5px; text-align: center; padding: 0 16px 32px; }
+  @media (max-width: 640px) { .aide, .corps { margin-left: 0; } h1 { font-size: 23px; } }
+  /* ----- Visionneuse (panneau latéral fixe) ----- */
+  #panneau-vis { display: none; }
+  body.avec-vis #panneau-vis { display: flex; flex-direction: column; position: fixed; z-index: 5; top: 16px; right: 16px; bottom: 16px;
+    width: clamp(420px, 40vw, 860px); background: var(--carte); border: 1px solid var(--trait); border-radius: 12px; box-shadow: 0 6px 30px rgba(27,36,48,.12); overflow: hidden; }
+  body.avec-vis header, body.avec-vis main, body.avec-vis footer { margin-left: 24px; margin-right: calc(clamp(420px, 40vw, 860px) + 40px); max-width: none; }
+  body.avec-vis.vis-reduite #panneau-vis { top: auto; height: 46px; }
+  body.avec-vis.vis-reduite header, body.avec-vis.vis-reduite main, body.avec-vis.vis-reduite footer { margin-right: auto; margin-left: auto; max-width: 1080px; }
+  @media (max-width: 1100px) {
+    body.avec-vis #panneau-vis { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; height: 50vh; }
+    body.avec-vis header, body.avec-vis main, body.avec-vis footer { margin-right: auto; margin-left: auto; max-width: 1080px; }
+    body.avec-vis main { padding-bottom: 54vh; }
+  }
+  .vis-tete { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--trait); }
+  .vis-tete b { font-size: 14px; }
+  .vis-tete .petit { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .vis-tete button { padding: 5px 10px; font-size: 13px; }
+  #vis { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .v-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--trait); font-size: 13px; }
+  .v-barre button { padding: 5px 10px; font-size: 13px; background: transparent; color: var(--bleu); border: 1px solid var(--trait); }
+  .v-barre button:hover { background: var(--bleu-clair); }
+  .v-barre select { padding: 5px 8px; font-size: 13px; }
+  .v-case { display: inline-flex; gap: 4px; align-items: center; font-weight: 500; margin: 0; font-size: 13px; }
+  .v-aide { color: var(--doux); font-size: 11.5px; margin-left: auto; }
+  .v-note { color: var(--ambre); font-size: 12px; }
+  .v-scene { flex: 1; position: relative; min-height: 120px; }
+  .v-canvas, .v-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  .v-canvas:active, .v-svg:active { cursor: grabbing; }
+  .v-message { position: absolute; inset: 0; display: grid; place-items: center; color: var(--doux); padding: 20px; text-align: center; font-size: 14px; }
+  .v-svg { background: var(--fond); }
+  .v-svg path.prim { fill: none; stroke: var(--encre); stroke-opacity: .55; stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .v-svg path.local { fill: var(--bleu); fill-opacity: .04; }
+  .v-svg.avec-selection path.prim:not(.sel) { stroke-opacity: .18; }
+  .v-svg path.sel { stroke: #e8772e; stroke-opacity: 1; stroke-width: 2.5; }
+  .v-svg path.local.sel { fill: #e8772e; fill-opacity: .22; }
+  .v-svg text { fill: var(--doux); font-family: system-ui, sans-serif; pointer-events: none; }
+  .fiche { border-top: 1px solid var(--trait); padding: 12px 14px; max-height: 42%; overflow: auto; font-size: 13.5px; }
+  .fiche.vide { color: var(--doux); font-size: 13px; }
+  .fiche h3 { margin: 0 0 6px; font-size: 15px; }
+  .fiche dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 6px 0 8px; }
+  .fiche dt { color: var(--doux); }
+  .fiche dd { margin: 0; }
+  .fiche .lp { border: 1px solid var(--trait); border-radius: 8px; padding: 6px 10px; margin: 4px 0; display: flex; gap: 10px; justify-content: space-between; cursor: pointer; }
+  .fiche .lp:hover { background: var(--bleu-clair); }
+  .fiche .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .fiche .actions button { padding: 5px 10px; font-size: 13px; }
+  tr.cliquable { cursor: pointer; }
+  tr.cliquable:hover td { background: var(--bleu-clair); }
+  tr.choisie td { background: #fbe3cf !important; }
+  @media (prefers-color-scheme: dark) { tr.choisie td { background: #4a2f16 !important; } }
+  .lien-g { cursor: pointer; text-decoration: underline dotted; }
+</style>
+</head>
+<body>
+<header>
+  <div class="marque">SurveIA · BIM &amp; économie de la construction</div>
+  <h1>De la maquette au chiffrage, en quelques minutes</h1>
+  <p class="sous-titre">Le code mesure la maquette IFC. DeepSeek associe chaque ouvrage à une ligne de prix.
+    Le calcul final reste déterministe : l'IA ne calcule aucune quantité et n'invente aucun prix.</p>
+</header>
+
+<main>
+  <!-- ÉTAPE 1 : clé API -->
+  <section class="etape" id="e1">
+    <h2><span class="num"><span>1</span></span>Votre clé API DeepSeek</h2>
+    <p class="aide">Elle reste en mémoire sur votre ordinateur le temps de la session, et n'est jamais enregistrée sur le disque.</p>
+    <div class="corps">
+      <div id="cle-saisie">
+        <div class="ligne">
+          <div><label for="cle">Clé API</label><input type="password" id="cle" placeholder="sk-…" autocomplete="off" autofocus></div>
+          <div><label for="modele">Modèle</label><select id="modele"></select></div>
+          <button id="btn-cle">Valider la clé</button>
+        </div>
+      </div>
+      <div id="cle-ok" class="cache ligne" style="align-items:center">
+        <span>Clé validée <b id="cle-apercu"></b> · modèle</span>
+        <select id="modele2"></select>
+        <button class="secondaire" id="btn-changer">Changer de clé</button>
+      </div>
+      <div class="statut" id="s1"></div>
+    </div>
+  </section>
+
+  <!-- ÉTAPE 2 : maquette + prix -->
+  <section class="etape verrouillee" id="e2">
+    <h2><span class="num"><span>2</span></span>Maquette ou plan, et bibliothèque de prix</h2>
+    <p class="aide">Une maquette IFC (exportée avec les « quantités de base » de préférence) ou un plan 2D DXF / DWG.</p>
+    <div class="corps">
+      <div class="ligne">
+        <label class="fichier">Choisir un fichier .ifc, .dxf ou .dwg<input type="file" id="ifc" accept=".ifc,.dxf,.dwg"></label>
+        <span class="ou">ou une démo :</span>
+        <button class="secondaire" id="btn-demo">Maquette IFC</button>
+        <button class="secondaire" id="btn-demo-dxf">Plan DXF du RDC</button>
+      </div>
+      <details class="reglages">
+        <summary>Réglages pour les plans 2D (DXF / DWG)</summary>
+        <div class="ligne" style="margin-top:10px">
+          <div><label for="hauteur">Hauteur des murs (m)</label><input type="text" id="hauteur" value="2,70" style="width:90px" inputmode="decimal"></div>
+          <div><label for="unite">Unités du dessin</label>
+            <select id="unite"><option value="auto">Automatique</option><option value="mm">Millimètres</option><option value="cm">Centimètres</option><option value="m">Mètres</option></select></div>
+          <label class="case"><input type="checkbox" id="double" checked> Murs dessinés en double trait</label>
+        </div>
+        <p class="petit" style="margin:8px 0 0">Sur un plan, le code mesure les longueurs de traits, les surfaces des contours et compte les blocs.
+          L'IA indique seulement ce que représente chaque calque (mur, sol, élément à ignorer…). Les surfaces de murs sont
+          calculées ainsi : longueur dessinée ÷ 2 (double trait) × hauteur, ouvertures non déduites.</p>
+      </details>
+      <div class="cctp">
+        <div class="ligne" style="align-items:center">
+          <b style="font-size:14px">CCTP (facultatif)</b>
+          <label class="fichier" style="padding:6px 12px;font-size:13px">Joindre un CCTP (.pdf, .docx, .txt)<input type="file" id="cctp" accept=".pdf,.docx,.txt"></label>
+          <button class="secondaire" id="btn-cctp-demo" style="padding:6px 12px;font-size:13px">CCTP de démo</button>
+          <button class="secondaire cache" id="btn-cctp-retirer" style="padding:6px 12px;font-size:13px">Retirer</button>
+        </div>
+        <div id="cctp-info" class="petit" style="margin-top:6px">Sans CCTP, l'IA choisit les prix d'après les seuls noms de types, calques et blocs.
+          Avec un CCTP, elle cite les articles, signale les écarts et liste les ouvrages non modélisés.</div>
+      </div>
+      <div class="note">Bibliothèque de prix : <b id="biblio-nom">…</b> (<span id="biblio-nb">0</span> lignes).
+        <label class="fichier" style="margin-left:6px;padding:4px 10px;font-size:13px">Remplacer par mon CSV<input type="file" id="csv" accept=".csv"></label>
+        <span class="petit">Colonnes : code ; lot ; designation ; unite ; prix_unitaire_ht</span>
+      </div>
+      <div class="statut" id="s2"></div>
+    </div>
+  </section>
+
+  <!-- ÉTAPE 3 : métré -->
+  <section class="etape verrouillee" id="e3">
+    <h2><span class="num"><span>3</span></span>Métré extrait de la maquette</h2>
+    <p class="aide">Calculé par le code à partir des quantités IFC, sans IA. Les éléments sont regroupés par type.</p>
+    <div class="corps">
+      <div class="kpis" id="k3"></div>
+      <div class="tableau"><table id="t3"></table></div>
+      <div class="ligne" style="margin-top:14px;align-items:center">
+        <button id="btn-chiffrer">Associer les prix avec DeepSeek →</button>
+        <label class="case" style="margin:0"><input type="checkbox" id="reflexion"> Réflexion approfondie
+          <span class="petit">(plus précis, mais plusieurs minutes)</span></label>
+      </div>
+      <p class="petit" id="info-memoire" style="margin:8px 0 0">Les réponses de l'IA sont mémorisées : changer la hauteur des murs
+        ou relancer le calcul ne redemande rien à DeepSeek (instantané et gratuit).
+        <a href="#" id="vider-memoire">Vider la mémoire</a></p>
+      <div class="statut" id="s3"></div>
+    </div>
+  </section>
+
+  <!-- ÉTAPE 4 : estimation -->
+  <section class="etape verrouillee" id="e4">
+    <h2><span class="num"><span>4</span></span>Estimation</h2>
+    <p class="aide">Quantités de l'étape 3 × prix unitaires de la bibliothèque. Les lignes marquées sont à relire par un économiste.</p>
+    <div class="corps">
+      <div class="kpis" id="k4"></div>
+      <div class="tableau"><table id="t4"></table></div>
+      <div id="nc"></div>
+      <div class="ligne" style="margin-top:14px">
+        <button id="btn-excel">Télécharger l'estimation Excel</button>
+        <button class="secondaire" id="btn-rechiffrer">Relancer la correspondance</button>
+      </div>
+      <div class="statut" id="s4"></div>
+    </div>
+  </section>
+
+  <!-- ÉTAPE 5 : questions -->
+  <section class="etape verrouillee" id="e5">
+    <h2><span class="num"><span>5</span></span>Questions sur le chiffrage</h2>
+    <p class="aide">DeepSeek répond à partir du métré, de l'estimation et de la bibliothèque de prix.</p>
+    <div class="corps">
+      <div class="puces">
+        <button class="puce">Quels sont les 3 postes qui pèsent le plus, et pourquoi ?</button>
+        <button class="puce">Quel impact si on passe toutes les fenêtres en PVC ?</button>
+        <button class="puce">Que manque-t-il pour un chiffrage complet de ce bâtiment ?</button>
+      </div>
+      <div class="ligne"><input type="text" id="question" style="flex:1;min-width:220px" placeholder="Votre question…"><button id="btn-question">Envoyer</button></div>
+      <div id="reponses"></div>
+      <div class="statut" id="s5"></div>
+    </div>
+  </section>
+</main>
+<aside id="panneau-vis" aria-label="Visionneuse">
+  <div class="vis-tete"><b>Visionneuse</b><span class="petit" id="vis-titre"></span>
+    <button class="secondaire" id="vis-reduire" title="Réduire ou agrandir le panneau">Réduire</button></div>
+  <div id="vis"></div>
+  <div class="fiche vide" id="fiche">Cliquez une ligne du métré ou de l'estimation pour la localiser, ou un objet dans la vue pour voir sa fiche et ses prix.</div>
+</aside>
+<footer>POC de démonstration · prix fictifs · à valider par un économiste avant tout usage réel</footer>
+
+<script src="/visionneuse.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const eur = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
+const nb = (v, d = 2) => v === null || v === undefined ? "—" : new Intl.NumberFormat("fr-FR", { maximumFractionDigits: d, minimumFractionDigits: d }).format(v);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function statut(id, texte, genre = "") { const e = $(id); e.className = "statut " + genre; e.innerHTML = texte; }
+function attente(id, texte) {
+  const debut = Date.now();
+  statut(id, `<span class="attente"><span class="roue"></span><span class="msg">${texte}</span> <span class="chrono">0 s</span></span>`);
+  const t = setInterval(() => { const c = $(id).querySelector(".chrono"); if (c) c.textContent = Math.round((Date.now() - debut) / 1000) + " s"; else clearInterval(t); }, 500);
+  const stop = () => clearInterval(t);
+  stop.message = (m) => { const e = $(id).querySelector(".msg"); if (e) e.textContent = m; };
+  return stop;
+}
+function deverrouiller(...ids) { ids.forEach((i) => $(i).classList.remove("verrouillee")); }
+function verrouiller(...ids) { ids.forEach((i) => { $(i).classList.add("verrouillee"); $(i).classList.remove("faite"); }); }
+function faite(id, oui = true) { $(id).classList.toggle("faite", oui); }
+
+const HORS_LIGNE = "L'application locale ne répond pas : vérifiez que la fenêtre du terminal est toujours ouverte " +
+  "(sinon relancez « python chiffrage_ia.py »), puis rechargez la page.";
+async function api(chemin, options = {}) {
+  let r;
+  try { r = await fetch(chemin, options); }
+  catch (e) { throw new Error(HORS_LIGNE); }
+  const d = await r.json().catch(() => ({ erreur: "Réponse illisible du serveur local." }));
+  if (!r.ok || d.erreur) throw new Error(d.erreur || "Erreur " + r.status);
+  return d;
+}
+const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
+// Lance un calcul long côté serveur, puis vient chercher le résultat chaque seconde.
+// Aucune requête ne reste ouverte longtemps : le navigateur n'abandonne plus en cours de route.
+async function tache(chemin, corps, surProgression) {
+  const { tache: id } = await api(chemin, { method: "POST", body: JSON.stringify(corps) });
+  return suivreTache(id, surProgression);
+}
+async function suivreTache(id, surProgression) {
+  let echecs = 0;
+  for (;;) {
+    await pause(1000);
+    let t;
+    try { t = await api("/api/tache?id=" + id); echecs = 0; }
+    catch (e) { if (e.message !== HORS_LIGNE || ++echecs >= 5) throw e; continue; }
+    if (t.etat === "fini") return t.resultat;
+    if (t.etat === "erreur") throw new Error(t.erreur);
+    surProgression(t.progression);
+  }
+}
+
+// ---------- Étape 1 : clé ----------
+async function init() {
+  const e = await api("/api/etat");
+  for (const sel of [$("modele"), $("modele2")]) {
+    sel.innerHTML = Object.entries(e.modeles).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+    sel.value = e.modele;
+  }
+  $("biblio-nom").textContent = e.bibliotheque.nom; $("biblio-nb").textContent = e.bibliotheque.nb;
+  afficherCctp(e.cctp);
+}
+$("btn-cle").onclick = async () => {
+  const stop = attente("s1", "Vérification de la clé auprès de DeepSeek…");
+  $("btn-cle").disabled = true;
+  try {
+    const d = await api("/api/cle", { method: "POST", body: JSON.stringify({ cle: $("cle").value, modele: $("modele").value }) });
+    $("cle").value = "";
+    // La liste des modèles vient de DeepSeek : un modèle renommé ou ajouté apparaît sans modifier le code
+    for (const sel of [$("modele"), $("modele2")])
+      sel.innerHTML = Object.entries(d.libelles).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join("");
+    $("cle-apercu").textContent = d.apercu; $("modele2").value = d.modele;
+    $("cle-saisie").classList.add("cache"); $("cle-ok").classList.remove("cache");
+    statut("s1", "Connexion à l'API réussie.", "ok"); faite("e1"); deverrouiller("e2");
+  } catch (err) { statut("s1", esc(err.message), "erreur"); }
+  finally { stop(); $("btn-cle").disabled = false; }
+};
+$("cle").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btn-cle").click(); });
+$("btn-changer").onclick = async () => {
+  await api("/api/oublier_cle", { method: "POST" });
+  $("cle-ok").classList.add("cache"); $("cle-saisie").classList.remove("cache");
+  faite("e1", false); verrouiller("e2", "e3", "e4", "e5"); statut("s1", ""); $("cle").focus();
+};
+$("modele2").onchange = () => api("/api/modele", { method: "POST", body: JSON.stringify({ modele: $("modele2").value }) });
+
+// ---------- Étape 2 : maquette ----------
+async function lancerMetre(chemin, corps, libelle) {
+  const stop = attente("s2", "Lecture de " + esc(libelle) + " et calcul du métré…");
+  verrouiller("e3", "e4", "e5");
+  try {
+    const { tache: id } = await api(chemin, { method: "POST", body: corps });
+    const m = await suivreTache(id, stop.message);
+    const u = m.source === "dxf" ? `, unités : ${esc(m.unite_longueur)} (${esc(m.origine_unite)})` : "";
+    statut("s2", `${m.source === "dxf" ? "Plan" : "Maquette"} lu${m.source === "dxf" ? "" : "e"} : <b>${esc(m.fichier)}</b> (${esc(m.schema)}, ${m.nb_entites.toLocaleString("fr-FR")} entités${u}).`, "ok");
+    faite("e2"); PAGE.metre = m; PAGE.estimation = null; afficherMetre(m); deverrouiller("e3");
+    ouvrirVisionneuse(m);
+    $("e3").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) { statut("s2", esc(err.message), "erreur"); }
+  finally { stop(); }
+}
+const unite = () => "&unite=" + $("unite").value;
+$("btn-demo").onclick = () => lancerMetre("/api/metre?demo=ifc", "", "la maquette de démo");
+$("btn-demo-dxf").onclick = () => lancerMetre("/api/metre?demo=dxf" + unite(), "", "le plan de démo");
+$("ifc").onchange = (e) => { const f = e.target.files[0]; if (f) lancerMetre("/api/metre?nom=" + encodeURIComponent(f.name) + unite(), f, f.name); e.target.value = ""; };
+function afficherCctp(c) {
+  $("btn-cctp-retirer").classList.toggle("cache", !c);
+  $("cctp-info").innerHTML = c
+    ? `<span style="color:var(--vert);font-weight:600">✓ ${esc(c.fichier)}</span> — ${c.nb_pages ? c.nb_pages + " pages, " : ""}${c.nb_mots.toLocaleString("fr-FR")} mots, ${c.nb_articles} articles repérés` +
+      (c.lots.length ? `<br>${c.lots.map(esc).join(" · ")}` : "") +
+      (c.tronque ? `<br><span style="color:var(--ambre)">Document très long : seule la première partie sera transmise à l'IA.</span>` : "")
+    : "Sans CCTP, l'IA choisit les prix d'après les seuls noms de types, calques et blocs. Avec un CCTP, elle cite les articles, signale les écarts et liste les ouvrages non modélisés.";
+}
+async function chargerCctp(chemin, corps) {
+  const stop = attente("s2", "Lecture du CCTP…");
+  try {
+    afficherCctp(await api(chemin, { method: "POST", body: corps }));
+    statut("s2", "CCTP chargé : il sera pris en compte au prochain chiffrage.", "ok"); verrouiller("e4", "e5");
+  } catch (err) { statut("s2", esc(err.message), "erreur"); }
+  finally { stop(); }
+}
+$("btn-cctp-demo").onclick = () => chargerCctp("/api/cctp?demo=1", "");
+$("cctp").onchange = (e) => { const f = e.target.files[0]; if (f) chargerCctp("/api/cctp?nom=" + encodeURIComponent(f.name), f); e.target.value = ""; };
+$("btn-cctp-retirer").onclick = async () => { await api("/api/cctp_retirer", { method: "POST" }); afficherCctp(null); verrouiller("e4", "e5"); statut("s2", "CCTP retiré."); };
+$("unite").onchange = () => statut("s2", "Unités modifiées : rechargez le plan pour recalculer le métré.");
+$("csv").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = await api("/api/bibliotheque?nom=" + encodeURIComponent(f.name), { method: "POST", body: f });
+    $("biblio-nom").textContent = d.nom; $("biblio-nb").textContent = d.nb;
+    statut("s2", "Bibliothèque de prix remplacée.", "ok"); verrouiller("e4", "e5");
+  } catch (err) { statut("s2", esc(err.message), "erreur"); }
+  e.target.value = "";
+};
+
+function afficherMetre(m) {
+  const g = m.groupes;
+  if (m.source === "dxf") return afficherMetrePlan(m);
+  $("k3").innerHTML = [
+    [m.nb_elements, "éléments mesurés"], [g.length, "types d'ouvrages"], [m.niveaux.length, "niveaux"],
+    ...(m.nb_locaux ? [[m.nb_locaux, "locaux (IfcSpace)"]] : []),
+    [nb(g.filter((x) => x.classe === "IfcWall").reduce((s, x) => s + (x.surface || 0), 0), 0) + " m²", "de murs (surface nette)"],
+  ].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  $("t3").innerHTML = `<tr><th>Groupe</th><th>Catégorie</th><th>Type</th><th>Matériau</th><th class="n">Nb</th><th class="n">Surface m²</th><th class="n">Volume m³</th><th class="n">Longueur m</th></tr>` +
+    g.map((x) => `<tr class="cliquable" data-g="${x.id}" title="Localiser dans la visionneuse"><td class="petit">${x.id}</td><td>${esc(x.categorie)}</td><td><b>${esc(x.type)}</b></td><td class="petit">${esc(x.materiau) || "—"}</td>
+      <td class="n">${x.nombre}</td><td class="n">${nb(x.surface)}</td><td class="n">${nb(x.volume, 3)}</td><td class="n">${nb(x.longueur)}</td></tr>`).join("");
+}
+
+function afficherMetrePlan(m) {
+  const g = m.groupes, n = (genre) => g.filter((x) => x.genre === genre);
+  $("k3").innerHTML = [
+    [n("calque").length, "calques mesurés"], [n("bloc").reduce((s, x) => s + x.nombre, 0), "blocs insérés (" + n("bloc").length + " types)"],
+    [n("local").reduce((s, x) => s + x.nombre, 0), "locaux identifiés"],
+    [nb(n("local").reduce((s, x) => s + (x.surface || 0), 0), 0) + " m²", "de surface de locaux"],
+  ].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  const nom = { calque: "Calque", bloc: "Bloc", local: "Locaux" };
+  $("t3").innerHTML = `<tr><th>Groupe</th><th>Genre</th><th>Nom</th><th>Détail</th><th class="n">Nb</th><th class="n">Surface m²</th><th class="n">Longueur dessinée m</th></tr>` +
+    g.map((x) => `<tr class="cliquable" data-g="${x.id}" title="Localiser dans la visionneuse"><td class="petit">${x.id}</td><td>${nom[x.genre]}</td><td><b>${esc(x.type)}</b></td><td class="petit">${esc(x.detail)}</td>
+      <td class="n">${x.genre === "calque" ? (x.nombre || "—") : x.nombre}</td><td class="n">${nb(x.surface)}</td><td class="n">${nb(x.longueur)}</td></tr>`).join("");
+}
+
+// ---------- Étape 4 : chiffrage ----------
+async function chiffrer(forcer = false) {
+  const stop = attente("s3", "DeepSeek associe les ouvrages aux lignes de prix…");
+  $("btn-chiffrer").disabled = $("btn-rechiffrer").disabled = true;
+  try {
+    const hauteur = parseFloat($("hauteur").value.replace(",", "."));
+    const est = await tache("/api/chiffrer", { hauteur, double_trait: $("double").checked, reflexion: $("reflexion").checked, forcer }, stop.message);
+    const details = [];
+    if (est.depuis_memoire) details.push(`${est.depuis_memoire}/${est.nb_groupes} groupe(s) repris de la mémoire`);
+    if (est.decoupages) details.push(`${est.decoupages} réponse(s) trop longue(s) redécoupée(s) automatiquement`);
+    if (est.relances) details.push(`${est.relances} groupe(s) oublié(s) par l'IA redemandé(s)`);
+    statut("s3", "Correspondance terminée" + (details.length ? " — " + details.join(", ") : "") + ".", "ok"); faite("e3");
+    afficherEstimation(est); deverrouiller("e4", "e5"); faite("e4");
+    $("e4").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) { statut("s3", esc(err.message), "erreur"); }
+  finally { stop(); $("btn-chiffrer").disabled = $("btn-rechiffrer").disabled = false; }
+}
+$("btn-chiffrer").onclick = () => chiffrer(false);
+// « Relancer » ignore la mémoire et redemande tout à DeepSeek
+$("btn-rechiffrer").onclick = () => chiffrer(true);
+$("vider-memoire").onclick = async (ev) => {
+  ev.preventDefault();
+  await api("/api/memoire_vider", { method: "POST" });
+  $("info-memoire").textContent = "Mémoire vidée : la prochaine correspondance sera entièrement redemandée à DeepSeek.";
+};
+
+function afficherEstimation(e) {
+  PAGE.estimation = e;
+  const aVerifier = e.lignes.filter((l) => l.a_verifier).length;
+  $("k4").innerHTML = [
+    [eur.format(e.total_ht), "Total HT", "fort"], [eur.format(e.total_ht * (1 + e.tva)), "Total TTC (TVA " + Math.round(e.tva * 100) + " %)"],
+    [e.lignes.length, "lignes chiffrées"], [aVerifier + e.non_chiffres.length, "points à vérifier"],
+    ...(e.cctp ? [[(e.absents || []).length, "ouvrages du CCTP non modélisés"]] : []),
+    [e.duree + " s", (e.appels ? e.appels + " appel(s) · " + (e.jetons_entree + e.jetons_sortie).toLocaleString("fr-FR") + " jetons" +
+      (e.jetons_cache ? " (" + Math.round(100 * e.jetons_cache / Math.max(1, e.jetons_entree)) + " % de l'entrée en cache)" : "")
+      : "aucun appel : tout vient de la mémoire") + " · " + esc(e.modele)],
+  ].map(([v, l, c]) => `<div class="kpi ${c || ""}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  const lots = {};
+  e.lignes.forEach((l) => (lots[l.lot] ||= []).push(l));
+  let h = `<tr><th>Code</th><th>Désignation</th><th>Éléments sources</th><th class="n">Quantité</th><th>Unité</th><th class="n">PU HT</th><th class="n">Total HT</th><th>Confiance IA</th></tr>`;
+  for (const [lot, lignes] of Object.entries(lots).sort()) {
+    h += `<tr class="lot"><td colspan="8">${esc(lot)}</td></tr>`;
+    for (const l of lignes) {
+      h += `<tr class="cliquable" data-g="${esc(l.groupes.join(","))}" data-code="${esc(l.code)}" title="Localiser dans la visionneuse"><td class="petit" style="white-space:nowrap">${esc(l.code)}</td><td>${esc(l.designation)}<div class="petit">${esc(l.justification)}</div>
+        ${l.remarque ? `<div class="alerte">⚠ ${esc(l.remarque)}</div>` : ""}
+        ${(l.articles || []).map((a) => `<div class="art">CCTP art. ${esc(a.numero)} : « ${esc(a.extrait)} »</div>`).join("")}
+        ${(l.ecarts || []).map((x) => `<div class="ecart">⚠ Écart avec le CCTP : ${esc(x)}</div>`).join("")}
+        ${l.hypothese ? `<div class="hypo">Calcul : ${esc(l.hypothese)}</div>` : ""}</td>
+        <td class="petit">${l.elements.map(esc).join("<br>")}</td>
+        <td class="n">${l.qte_manquante && !l.quantite ? '<span class="badge b-non">à saisir</span>' : nb(l.quantite)}</td><td>${esc(l.unite)}</td>
+        <td class="n">${eur.format(l.pu)}</td><td class="n"><b>${eur.format(l.total)}</b></td>
+        <td><span class="badge b-${l.confiance}">${l.confiance}</span></td></tr>`;
+    }
+    h += `<tr class="st"><td colspan="6" class="n">Sous-total ${esc(lot)}</td><td class="n">${eur.format(lignes.reduce((s, l) => s + l.total, 0))}</td><td></td></tr>`;
+  }
+  $("t4").innerHTML = h;
+  const absents = (e.absents || []).length ? `<div class="note orange"><b>Décrits au CCTP, absents ${e.source === "dxf" ? "du plan" : "de la maquette"} — à compléter :</b> <span class="petit">dans l'Excel, ceux qui ont une ligne de prix sont prêts à chiffrer (quantité à saisir sur fond jaune, le total se met à jour).</span><br>` +
+    e.absents.map((a) => `${a.article ? "<b>Art. " + esc(a.article) + "</b> " : ""}${esc(a.ouvrage)}` +
+      (a.code ? ` <span class="petit">→ ligne ${esc(a.code)} (${esc(a.unite)})</span>` : ` <span class="petit">→ pas de ligne dans la bibliothèque</span>`) +
+      (a.info_quantite ? ` <span class="petit">· CCTP : ${esc(a.info_quantite)}</span>` : "")).join("<br>") + `</div>` : "";
+  $("nc").innerHTML = absents + (e.non_chiffres.length ? `<div class="note" style="background:var(--rouge-fond)"><b>Non chiffré, à traiter :</b><br>` +
+    e.non_chiffres.map((n) => `<span class="lien-g" data-g="${esc(n.groupe)}" title="Localiser">${esc(n.element)}</span> — <span class="petit">${esc(n.raison)}</span>`).join("<br>") + `</div>` : "") +
+    ((e.ignores || []).length ? `<div class="note"><b>Écartés par l'IA (hors chiffrage) :</b><br>` +
+    e.ignores.map((n) => `<span class="lien-g" data-g="${esc(n.groupe)}" title="Localiser">${esc(n.element)}</span> — <span class="petit">${esc(n.raison)}</span>`).join("<br>") + `</div>` : "");
+}
+$("btn-excel").onclick = () => { window.location = "/api/excel"; };
+
+// ---------- Étape 5 : questions ----------
+async function poser(q) {
+  q = q.trim(); if (!q) return;
+  const stop = attente("s5", "DeepSeek rédige sa réponse…");
+  $("btn-question").disabled = true;
+  try {
+    const d = await tache("/api/question", { question: q, reflexion: $("reflexion").checked }, stop.message);
+    const bloc = document.createElement("div");
+    bloc.innerHTML = `<div class="question">${esc(q)}</div><div class="reponse">${esc(d.reponse).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</div>`;
+    $("reponses").prepend(bloc); statut("s5", ""); $("question").value = "";
+  } catch (err) { statut("s5", esc(err.message), "erreur"); }
+  finally { stop(); $("btn-question").disabled = false; }
+}
+$("btn-question").onclick = () => poser($("question").value);
+$("question").addEventListener("keydown", (e) => { if (e.key === "Enter") poser($("question").value); });
+document.querySelectorAll(".puce").forEach((b) => (b.onclick = () => poser(b.textContent)));
+
+// ---------- Visionneuse : liens dans les deux sens ----------
+const PAGE = { metre: null, estimation: null };
+const fmtQ = (v, u, d = 2) => v === null || v === undefined ? null : nb(v, d) + " " + u;
+
+async function ouvrirVisionneuse(m) {
+  document.body.classList.add("avec-vis");
+  $("vis-titre").textContent = m.fichier;
+  ficheVide();
+  Visionneuse.message("Préparation de la vue…");
+  try {
+    const r = await api("/api/visionneuse/preparer", { method: "POST" });
+    if (r.tache) await suivreTache(r.tache, (t) => Visionneuse.message(t));
+    if (PAGE.metre !== m) return; // un autre fichier a été chargé entre-temps
+    if (m.source === "ifc") {
+      const rep = await fetch("/api/visionneuse/geometrie");
+      if (!rep.ok) throw new Error("géométrie indisponible");
+      Visionneuse.chargerIFC(await rep.arrayBuffer());
+    } else {
+      Visionneuse.chargerPlan(await api("/api/visionneuse/dessin"));
+    }
+  } catch (err) {
+    Visionneuse.message("Vue indisponible : " + err.message);
+  }
+}
+
+function groupe(gid) { return (PAGE.metre?.groupes || []).find((g) => g.id === gid); }
+function lignesDuGroupe(gid) { return (PAGE.estimation?.lignes || []).filter((l) => l.groupes.includes(gid)); }
+
+function marquerLignes(gs) {
+  const ens = new Set(gs);
+  document.querySelectorAll("tr.choisie").forEach((tr) => tr.classList.remove("choisie"));
+  document.querySelectorAll("#t3 tr[data-g]").forEach((tr) => ens.has(tr.dataset.g) && tr.classList.add("choisie"));
+  document.querySelectorAll("#t4 tr[data-g]").forEach((tr) => tr.dataset.g.split(",").some((g) => ens.has(g)) && tr.classList.add("choisie"));
+}
+
+function ficheVide() {
+  $("fiche").className = "fiche vide";
+  $("fiche").textContent = "Cliquez une ligne du métré ou de l'estimation pour la localiser, ou un objet dans la vue pour voir sa fiche et ses prix.";
+}
+
+function blocGroupe(gid) {
+  const g = groupe(gid);
+  if (!g) return "";
+  const q = [fmtQ(g.surface, "m²"), fmtQ(g.volume, "m³", 3), fmtQ(g.longueur, "m")].filter(Boolean).join(" · ");
+  return `<div><b>${esc(g.id)}</b> ${esc(g.categorie)} « ${esc(g.type)} » — ${g.nombre} élément(s)${q ? " · " + q : ""}</div>`;
+}
+
+function blocLignes(gs) {
+  const vues = new Set(), lignes = [];
+  for (const g of gs) for (const l of lignesDuGroupe(g)) if (!vues.has(l.code)) { vues.add(l.code); lignes.push(l); }
+  if (!PAGE.estimation) return `<p class="petit">Les lignes de prix apparaîtront ici après l'étape « Associer les prix ».</p>`;
+  if (!lignes.length) {
+    const nc = (PAGE.estimation.non_chiffres || []).concat(PAGE.estimation.ignores || []).filter((n) => gs.includes(n.groupe));
+    return `<p class="petit">Aucune ligne de prix${nc.length ? " : " + esc(nc[0].raison) : ""}</p>`;
+  }
+  return `<div class="petit" style="margin-top:8px">Ligne(s) de prix :</div>` + lignes.map((l) =>
+    `<div class="lp" data-code="${esc(l.code)}" title="Voir dans l'estimation"><span><b>${esc(l.code)}</b> ${esc(l.designation)}</span>
+     <span class="n" style="white-space:nowrap">${l.qte_manquante && !l.quantite ? "à saisir" : nb(l.quantite) + " " + esc(l.unite)} · <b>${eur.format(l.total)}</b></span></div>`).join("");
+}
+
+function brancherFiche(gs) {
+  $("fiche").querySelectorAll(".lp").forEach((d) => (d.onclick = () => {
+    const tr = document.querySelector(`#t4 tr[data-code="${CSS.escape(d.dataset.code)}"]`);
+    if (tr) { tr.scrollIntoView({ behavior: "smooth", block: "center" }); choisirGroupes(tr.dataset.g.split(",")); }
+  }));
+  const bMetre = $("fiche").querySelector("[data-action=metre]");
+  if (bMetre) bMetre.onclick = () => document.querySelector(`#t3 tr[data-g="${CSS.escape(gs[0])}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const bTout = $("fiche").querySelector("[data-action=tout]");
+  if (bTout) bTout.onclick = () => choisirGroupes(gs);
+}
+
+// Clic sur une ligne (métré, estimation, non chiffrés) -> objets surlignés et cadrés dans la vue
+function choisirGroupes(gs) {
+  if (!document.body.classList.contains("avec-vis") || !Visionneuse.mode()) return;
+  const r = Visionneuse.selectionnerGroupes(gs);
+  marquerLignes(gs);
+  $("fiche").className = "fiche";
+  $("fiche").innerHTML = `<h3>${gs.length === 1 ? "Groupe " + esc(gs[0]) : gs.length + " groupes"} — ${r.nb} objet(s) surligné(s)</h3>` +
+    (r.nb ? "" : `<p class="petit">Ces éléments n'ont pas de forme affichable.</p>`) +
+    gs.map(blocGroupe).join("") + blocLignes(gs) +
+    `<div class="actions"><button class="secondaire" data-action="metre">Voir dans le métré</button></div>`;
+  brancherFiche(gs);
+}
+
+// Clic sur un objet dans la vue -> fiche de l'objet, de son groupe et de ses prix
+function afficherFiche(info) {
+  if (!info) { marquerLignes([]); ficheVide(); return; }
+  const gs = info.groupe ? [info.groupe] : [];
+  marquerLignes(gs);
+  $("fiche").className = "fiche";
+  $("fiche").innerHTML = `<h3>${esc(info.titre)}</h3><dl>${info.details.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` +
+    (gs.length ? blocGroupe(gs[0]) + blocLignes(gs) : `<p class="petit">Élément non rattaché au métré.</p>`) +
+    `<div class="actions">${info.nbGroupe > 1 ? `<button data-action="tout">Surligner tout le groupe (${info.nbGroupe})</button>` : ""}
+     ${gs.length ? `<button class="secondaire" data-action="metre">Voir dans le métré</button>` : ""}</div>`;
+  brancherFiche(gs);
+}
+
+for (const id of ["t3", "t4"]) $(id).addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-g]");
+  if (tr && tr.dataset.g) choisirGroupes(tr.dataset.g.split(","));
+});
+$("nc").addEventListener("click", (e) => { const s = e.target.closest(".lien-g"); if (s) choisirGroupes([s.dataset.g]); });
+$("vis-reduire").onclick = () => {
+  const r = document.body.classList.toggle("vis-reduite");
+  $("vis-reduire").textContent = r ? "Agrandir" : "Réduire";
+};
+Visionneuse.init($("vis"), { surChoix: afficherFiche });
+
+init().catch((e) => statut("s1", esc(e.message), "erreur"));
+</script>
+</body>
+</html>

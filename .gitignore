@@ -1,0 +1,27 @@
+# Données de projet : réponses de l'IA sur VOS maquettes (ne jamais publier)
+memoire_correspondances.json
+memoire_correspondances.json.tmp
+
+# Estimations exportées et fichiers de travail
+Estimation_*.xlsx
+*.tmp
+.essai_ecriture
+
+# Sauvegardes et archives locales
+_sauvegardes/
+*.zip
+
+# Journal du faux DeepSeek des tests
+tests/faux_params.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Systèmes
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,13 @@
+# Fins de ligne : Windows pour le lanceur .bat, Unix pour les lanceurs Mac et les scripts
+*.bat      text eol=crlf
+*.command  text eol=lf
+*.py       text eol=lf
+*.js       text eol=lf
+*.html     text eol=lf
+*.md       text eol=lf
+*.csv      text eol=lf
+# Fichiers de démo : conservés à l'octet près (vérifiables avec outils/)
+*.ifc      -text
+*.dxf      -text
+*.pdf      binary
+*.png      binary
