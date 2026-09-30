@@ -16,6 +16,7 @@ Dépendances : openpyxl (pip install openpyxl) ; pypdf, seulement pour lire un C
 La clé API reste en mémoire le temps de la session : elle n'est jamais écrite sur le disque.
 """
 
+import copy
 import csv
 import hashlib
 import io
@@ -410,7 +411,6 @@ def extraire_metre(contenu: bytes, nom_fichier="maquette.ifc"):
             "longueur": 0.0, "n_longueur": 0, "epaisseurs": [], "niveaux": Counter(), "noms": [], "membres": [],
         })
         g["nombre"] += 1
-        g["membres"].append((i, nom_local or (a[2] if isinstance(a[2], str) else "") or nom_type, niveau_elt.get(i, "?")))
         if nom_local:
             g["noms"].append(nom_local)
         if materiau:
@@ -432,6 +432,9 @@ def extraire_metre(contenu: bytes, nom_fichier="maquette.ifc"):
             g["volume"] += volume; g["n_volume"] += 1
         if longueur is not None:
             g["longueur"] += longueur; g["n_longueur"] += 1
+        # chaque objet garde ses propres quantités : on peut ensuite en chiffrer un sous-ensemble exactement
+        g["membres"].append((i, nom_local or (a[2] if isinstance(a[2], str) else "") or nom_type, niveau_elt.get(i, "?"),
+                             surface, volume, longueur))
         if epaisseur is not None and classe in ("IfcWall", "IfcSlab", "IfcCovering", "IfcPlate"):
             g["epaisseurs"].append(epaisseur)
 
@@ -462,11 +465,15 @@ def extraire_metre(contenu: bytes, nom_fichier="maquette.ifc"):
     niveaux = sorted({n for g in resultat for n in g["niveaux"]})
     # Pour la visionneuse : chaque élément mesuré, avec son groupe (clés « _ » : jamais envoyées au navigateur)
     elements_visionneuse = [{"id": i, "g": r["id"], "classe": g["classe"], "niveau": niv, "nom": nom}
-                            for g, r in zip(liste, resultat) for i, nom, niv in g["membres"]]
+                            for g, r in zip(liste, resultat) for i, nom, niv, _s, _v, _l in g["membres"]]
+    # Unités chiffrables séparément (objets) : identifiant -> groupe et quantités propres
+    unites = {str(i): {"g": r["id"], "nom": nom, "niveau": niv, "surface": s_, "volume": v_, "longueur": l_}
+              for g, r in zip(liste, resultat) for i, nom, niv, s_, v_, l_ in g["membres"]}
     return {
         "_lecteur": ifc,
         "_facteur_longueur": fu["LENGTHUNIT"],
         "_elements": elements_visionneuse,
+        "_unites": unites,
         "fichier": nom_fichier,
         "source": "ifc",
         "schema": ifc.schema,
@@ -1023,6 +1030,8 @@ def associer_prix(cle, modele, metre, bibliotheque, params=None, cctp=None, refl
 
     progres("Calcul de l'estimation…")
     est = calculer_estimation(metre, bibliotheque, correspondances, absents or [], params, cctp)
+    # gardés par le serveur pour recalculer instantanément après chaque ajustement manuel
+    est["_correspondances"], est["_absents"] = correspondances, absents or []
     est.update({
         "appels": stats["appels"], "jetons_entree": stats["entree"], "jetons_sortie": stats["sortie"],
         "jetons_cache": stats["cache"], "depuis_memoire": depuis_memoire, "nb_groupes": len(groupes),
@@ -1031,94 +1040,615 @@ def associer_prix(cle, modele, metre, bibliotheque, params=None, cctp=None, refl
     return est
 
 
-def calculer_estimation(metre, bibliotheque, correspondances, absents, params=None, cctp=None):
-    """Partie déterministe : quantités du métré × prix de la bibliothèque, selon les correspondances."""
+# =============================================================================
+# 4 bis. ESTIMATION ET AJUSTEMENTS MANUELS
+# =============================================================================
+# L'IA propose des lignes de prix par groupe (type d'ouvrage). L'économiste peut ensuite, en direct :
+#  - affecter une ligne de prix à des groupes entiers (types, catégories) ou à des objets précis ;
+#  - retirer des groupes ou des objets d'une ligne, ou les exclure du chiffrage ;
+#  - forcer une quantité, ajouter une quantité saisie à la main (ouvrage non modélisé), valider une ligne.
+# Tout est recalculé par le code, sans rappeler l'IA. Les ajustements sont des données simples (codes
+# de prix par groupe et par objet), sauvegardées par maquette et annulables.
+
+RANG_CONFIANCE = {"validée": -2, "manuelle": -1, "haute": 0, "moyenne": 1, "faible": 2}
+MAX_CODES = 6  # lignes de prix au plus pour un même groupe ou objet
+
+
+def ajustements_vides():
+    return {"groupes": {}, "unites": {}, "natures": {}, "quantites": {}, "supplements": [], "valides": [],
+            "appris": [], "journal": []}
+
+
+def normaliser_ajustements(aj):
+    """Complète un jeu d'ajustements (fichier sauvegardé par une version précédente, par exemple)."""
+    base = ajustements_vides()
+    if isinstance(aj, dict):
+        for k, v in base.items():
+            if isinstance(aj.get(k), type(v)):
+                base[k] = aj[k]
+    return base
+
+
+def codes_ia(c, codes):
+    """Codes de prix valides proposés par l'IA pour un groupe (sans doublon, 3 au plus)."""
+    vus = []
+    for o in (c or {}).get("ouvrages") or []:
+        x = str(o.get("code", "")).strip() if isinstance(o, dict) else ""
+        if x in codes and x not in vus:
+            vus.append(x)
+    return vus[:3]
+
+
+def codes_du_groupe(gid, aj, correspondances, codes):
+    if gid in aj["groupes"]:
+        return [x for x in aj["groupes"][gid] if x in codes]
+    return codes_ia(correspondances.get(gid), codes)
+
+
+def codes_de_unite(uid, aj, correspondances, codes, unites):
+    if uid in aj["unites"]:
+        return [x for x in aj["unites"][uid] if x in codes]
+    return codes_du_groupe(unites[uid]["g"], aj, correspondances, codes)
+
+
+def sous_groupe(g, membres, unites):
+    """Le groupe g restreint à quelques-uns de ses objets, avec leurs quantités propres."""
+    s = dict(g)
+    s["nombre"] = len(membres)
+    for k in ("surface", "volume", "longueur"):
+        if k not in g:
+            continue
+        vals = [unites[u][k] for u in membres if unites[u].get(k) is not None]
+        s[k] = round(sum(vals), 3) if vals else None
+        if "n_" + k in g:
+            s["n_" + k] = len(vals)
+    return s
+
+
+def reste_du_groupe(g, parts):
+    """Le groupe g privé des objets déjà traités à part (quantités du groupe moins celles des parts)."""
+    s = dict(g)
+    s["nombre"] = g["nombre"] - sum(p["nombre"] for p in parts)
+    for k in ("surface", "volume", "longueur"):
+        if g.get(k) is None:
+            continue
+        n_key = "n_" + k
+        if n_key in g:
+            n = g[n_key] - sum(p.get(n_key) or 0 for p in parts)
+            s[n_key] = max(0, n)
+            if n <= 0:
+                s[k] = None
+                continue
+        s[k] = max(0.0, round(g[k] - sum(p.get(k) or 0.0 for p in parts), 3))
+    return s
+
+
+def nature_par_defaut(g, unite):
+    """Calque DXF chiffré à la main alors que l'IA n'en avait pas donné la nature : règle simple selon l'unité."""
+    u = nature_unite(unite)
+    if u == "surface":
+        return "surface_sol" if g.get("surface") else "mur"
+    if u == "longueur":
+        return "lineaire"
+    if u == "volume":
+        return "element_vertical"
+    if u == "nombre":
+        return "comptage"
+    return ""
+
+
+def calculer_estimation(metre, bibliotheque, correspondances, absents, params=None, cctp=None,
+                        ajustements=None, unites=None):
+    """Partie déterministe : quantités du métré × prix de la bibliothèque, selon les correspondances de l'IA
+    corrigées par les ajustements manuels (par groupe ou par objet)."""
     params = {**PARAMS_DEFAUT, **(params or {})}
+    aj = normaliser_ajustements(ajustements)
+    unites = unites or {}
     codes = {p["code"]: p for p in bibliotheque}
     groupes = metre["groupes"]
-    lignes, non_chiffres, ignores = {}, [], []
-    natures = {}
+    plan = metre.get("source") == "dxf"
+    lignes, non_chiffres, ignores, exclus = {}, [], [], []
+    natures, affectations = {}, {}
+
+    # objets affectés à la main, rangés par groupe
+    unites_par_groupe = defaultdict(dict)
+    for uid, lst in aj["unites"].items():
+        if uid in unites:
+            unites_par_groupe[unites[uid]["g"]][uid] = [x for x in lst if x in codes]
+
+    def nouvelle_ligne(p):
+        return lignes.setdefault(p["code"], {
+            "code": p["code"], "lot": p["lot"], "designation": p["designation"], "unite": p["unite"],
+            "pu": p["pu"], "quantite": 0.0, "qte_manquante": False, "groupes": [], "elements": [], "sources": [],
+            "confiance": "validée", "justifications": [], "remarques": [], "hypotheses": [],
+            "articles": [], "ecarts": [], "origines": set(),
+        })
+
     for g in groupes:
-        c = correspondances.get(g["id"])
-        if c is None:
-            non_chiffres.append({"groupe": g["id"], "element": libelle_groupe(g), "nombre": g["nombre"],
-                                 "raison": "L'IA n'a pas renvoyé de correspondance pour ce groupe, même après relance."})
-            continue
-        nature = str(c.get("nature") or "").strip().lower()
-        nature = nature if nature in NATURES_PLAN else ""
-        natures[g["id"]] = nature
-        ouvrages = [o for o in (c.get("ouvrages") or []) if isinstance(o, dict)]
-        valides = [o for o in ouvrages if str(o.get("code", "")).strip() in codes][:3]
-        inconnus = [str(o.get("code")) for o in ouvrages if str(o.get("code", "")).strip() not in codes]
-        if not valides:
-            if nature == "ignorer":
-                ignores.append({"groupe": g["id"], "element": libelle_groupe(g),
-                                "raison": c.get("remarque") or "Hors chiffrage"})
+        gid = g["id"]
+        c = correspondances.get(gid)
+        nature_ia = str((c or {}).get("nature") or "").strip().lower()
+        nature_ia = nature_ia if nature_ia in NATURES_PLAN else ""
+        nature = aj["natures"].get(gid) if aj["natures"].get(gid) in NATURES_PLAN else nature_ia
+        natures[gid] = nature
+        ouvrages_ia = {}
+        for o in (c or {}).get("ouvrages") or []:
+            if isinstance(o, dict):
+                ouvrages_ia.setdefault(str(o.get("code", "")).strip(), o)
+        manuel = gid in aj["groupes"]
+        codes_g = codes_du_groupe(gid, aj, correspondances, codes)
+        modifies = unites_par_groupe.get(gid, {})
+        affectations[gid] = {"codes": codes_g, "manuel": manuel, "appris": gid in aj["appris"],
+                             "ia": codes_ia(c, codes), "objets_modifies": len(modifies), "nature": nature,
+                             "nature_ia": nature_ia, "reste": g["nombre"] - len(modifies),
+                             "codes_objets": sorted({x for lst in modifies.values() for x in lst})}
+
+        # Découpage du groupe : objets affectés à part (par jeu de codes identique), puis le reste
+        paquets = defaultdict(list)
+        for uid, lst in modifies.items():
+            paquets[tuple(lst)].append(uid)
+        morceaux = [(sous_groupe(g, uids, unites), list(t), sorted(uids)) for t, uids in paquets.items()]
+        reste = reste_du_groupe(g, [m[0] for m in morceaux]) if morceaux else g
+        if reste["nombre"] > 0 or not morceaux:
+            morceaux.append((reste, codes_g, None))
+        sauf = sorted(modifies)
+
+        for sg, codes_m, uids in morceaux:
+            partiel = uids is not None or bool(sauf)
+            libelle = libelle_groupe(g)
+            if uids is not None:
+                libelle += " : %d objet(s) sur %d" % (sg["nombre"], g["nombre"]) if g["nombre"] > 1 else ""
+            elif partiel:
+                libelle += " : les %d autre(s) objet(s)" % sg["nombre"]
+            if not codes_m:
+                info = {"groupe": gid, "element": libelle, "nombre": sg["nombre"], "unites": uids,
+                        "sauf": sauf if uids is None else []}
+                if uids is not None or manuel:
+                    exclus.append({**info, "raison": "Retiré du chiffrage à la main"})
+                elif c is None:
+                    non_chiffres.append({**info, "raison": "L'IA n'a pas renvoyé de correspondance pour ce groupe, même après relance."})
+                elif nature_ia == "ignorer":
+                    ignores.append({**info, "raison": c.get("remarque") or "Hors chiffrage"})
+                else:
+                    inconnus = [x for x in ouvrages_ia if x and x not in codes]
+                    non_chiffres.append({**info, "raison": c.get("remarque") or (
+                        "Codes inconnus proposés : " + ", ".join(inconnus) if inconnus else "Aucune ligne de prix proposée par l'IA")})
                 continue
-            raison = c.get("remarque") or ("Codes inconnus proposés : " + ", ".join(inconnus) if inconnus else
-                                          "Aucune ligne de prix proposée par l'IA")
-            non_chiffres.append({"groupe": g["id"], "element": libelle_groupe(g), "nombre": g["nombre"], "raison": raison})
+            origine = "ia" if (uids is None and not manuel) else ("appris" if gid in aj["appris"] and uids is None else "manuel")
+            for code in codes_m:
+                p = codes[code]
+                nat = nature
+                if plan and g.get("genre") == "calque" and nat in ("", "ignorer") and origine != "ia":
+                    nat = nature_par_defaut(g, p["unite"])
+                qte, remarque, hypothese = quantite_pour(sg, p["unite"], nat, params)
+                ligne = nouvelle_ligne(p)
+                ligne["origines"].add(origine)
+                o = ouvrages_ia.get(code) if origine == "ia" else None
+                if o is not None:
+                    conf = str(o.get("confiance", "moyenne")).lower()
+                    conf = conf if conf in ("haute", "moyenne", "faible") else "moyenne"
+                    article = str(o.get("article_cctp") or "").strip()
+                    if cctp and article and not any(a["numero"] == article for a in ligne["articles"]):
+                        ligne["articles"].append({"numero": article, "extrait": " ".join(str(o.get("extrait_cctp") or "").split()[:25])})
+                    ecart = str(c.get("ecart_cctp") or "").strip()
+                    if cctp and ecart and ecart not in ligne["ecarts"]:
+                        ligne["ecarts"].append(ecart)
+                    if o.get("justification"):
+                        ligne["justifications"].append(str(o["justification"]).strip())
+                    info_ia = str(c.get("remarque") or "").strip()
+                    if info_ia:
+                        ligne["remarques"].append("Note de l'IA : " + info_ia)
+                else:
+                    conf = "manuelle"
+                if RANG_CONFIANCE[conf] > RANG_CONFIANCE[ligne["confiance"]]:
+                    ligne["confiance"] = conf
+                if qte is None:
+                    ligne["qte_manquante"] = True
+                else:
+                    ligne["quantite"] += qte
+                if remarque:
+                    ligne["remarques"].append(remarque)
+                if hypothese:
+                    ligne["hypotheses"].append(hypothese)
+                if gid not in ligne["groupes"]:
+                    ligne["groupes"].append(gid)
+                ligne["elements"].append(libelle + (" — " + LIBELLES_NATURE.get(nat, nat) if nat else "")
+                                         + {"manuel": " (ajouté à la main)", "appris": " (correction reprise)"}.get(origine, ""))
+                ligne["sources"].append({"g": gid, "libelle": libelle, "nombre": sg["nombre"], "unites": uids,
+                                         "sauf": sauf if uids is None else [], "origine": origine,
+                                         "quantite": None if qte is None else round(qte, 3)})
+
+    # Quantités saisies à la main (ouvrages non modélisés, compléments)
+    for s in aj["supplements"]:
+        p = codes.get(s.get("code"))
+        if not p:
             continue
-        for o in valides:
-            p = codes[str(o["code"]).strip()]
-            qte, remarque, hypothese = quantite_pour(g, p["unite"], nature, params)
-            conf = str(o.get("confiance", "moyenne")).lower()
-            conf = conf if conf in ("haute", "moyenne", "faible") else "moyenne"
-            ligne = lignes.setdefault(p["code"], {
-                "code": p["code"], "lot": p["lot"], "designation": p["designation"], "unite": p["unite"],
-                "pu": p["pu"], "quantite": 0.0, "qte_manquante": False, "groupes": [], "elements": [],
-                "confiance": "haute", "justifications": [], "remarques": [], "hypotheses": [],
-                "articles": [], "ecarts": [],
-            })
-            article = str(o.get("article_cctp") or "").strip()
-            if cctp and article:
-                extrait = " ".join(str(o.get("extrait_cctp") or "").split()[:25])
-                if not any(a["numero"] == article for a in ligne["articles"]):
-                    ligne["articles"].append({"numero": article, "extrait": extrait})
-            ecart = str(c.get("ecart_cctp") or "").strip()
-            if cctp and ecart and ecart not in ligne["ecarts"]:
-                ligne["ecarts"].append(ecart)
-            if qte is None:
-                ligne["qte_manquante"] = True
-            else:
-                ligne["quantite"] += qte
-            ligne["groupes"].append(g["id"])
-            ligne["elements"].append(libelle_groupe(g) + (" — " + LIBELLES_NATURE.get(nature, nature) if nature else ""))
-            rang = {"haute": 0, "moyenne": 1, "faible": 2}
-            if rang[conf] > rang[ligne["confiance"]]:
-                ligne["confiance"] = conf
-            if o.get("justification"):
-                ligne["justifications"].append(str(o["justification"]).strip())
-            if remarque:
-                ligne["remarques"].append(remarque)
-            info_ia = str(c.get("remarque") or "").strip()
-            if info_ia:
-                ligne["remarques"].append("Note de l'IA : " + info_ia)
-            if hypothese:
-                ligne["hypotheses"].append(hypothese)
+        ligne = nouvelle_ligne(p)
+        ligne["origines"].add("manuel")
+        if RANG_CONFIANCE["manuelle"] > RANG_CONFIANCE[ligne["confiance"]]:
+            ligne["confiance"] = "manuelle"
+        q = float(s.get("quantite") or 0)
+        ligne["quantite"] += q
+        texte = s.get("libelle") or "Quantité saisie à la main"
+        ligne["elements"].append("%s : %s %s (saisie)" % (texte, fr(q), p["unite"]))
+        ligne["sources"].append({"supplement": s["id"], "libelle": texte, "quantite": q, "origine": "manuel"})
+
+    # Lignes forcées sans aucune source : ligne entièrement manuelle
+    for code in aj["quantites"]:
+        if code in codes and code not in lignes:
+            nouvelle_ligne(codes[code])["origines"].add("manuel")
+            lignes[code]["confiance"] = "manuelle"
 
     resultat = []
     for l in lignes.values():
         l["quantite"] = round(l["quantite"], 3)
+        if l["code"] in aj["quantites"]:
+            l["quantite_calculee"] = None if (l["qte_manquante"] and not l["quantite"]) or not l["sources"] else l["quantite"]
+            l["quantite"] = round(float(aj["quantites"][l["code"]]), 3)
+            l["qte_manuelle"], l["qte_manquante"] = True, False
+        else:
+            l["qte_manuelle"] = False
         l["total"] = round(l["quantite"] * l["pu"], 2)
         l["justification"] = " ".join(dict.fromkeys(l.pop("justifications")))
         l["remarque"] = " ; ".join(dict.fromkeys(l.pop("remarques")))
         l["hypothese"] = " ; ".join(dict.fromkeys(l.pop("hypotheses")))
-        l["a_verifier"] = l["confiance"] != "haute" or l["qte_manquante"] or bool(l["remarque"]) or bool(l["ecarts"])
+        origines = l.pop("origines")
+        l["origine"] = "ia" if origines == {"ia"} else ("manuel" if "ia" not in origines else "mixte")
+        if l["code"] in aj["valides"]:
+            l["confiance"] = "validée"
+        elif l["confiance"] == "validée":  # aucune source (ligne vide) : rien de validé
+            l["confiance"] = "manuelle"
+        l["a_verifier"] = l["confiance"] not in ("validée",) and (
+            l["confiance"] not in ("haute", "manuelle") or l["qte_manquante"] or bool(l["remarque"]) or bool(l["ecarts"]))
         resultat.append(l)
     resultat.sort(key=lambda l: (l["lot"], l["code"]))
+
+    codes_saisis = {s.get("code") for s in aj["supplements"]}
+    absents_affiches = [{**a, "chiffre": bool(a.get("code")) and a.get("code") in codes_saisis} for a in (absents or [])]
     return {
         "source": metre.get("source", "ifc"),
         "cctp": {k: cctp[k] for k in ("fichier", "nb_pages", "nb_articles", "tronque")} if cctp else None,
-        "absents": absents,
+        "absents": absents_affiches,
         "lignes": resultat,
         "non_chiffres": non_chiffres,
         "ignores": ignores,
+        "exclus": exclus,
         "natures": natures,
-        "params": params if metre.get("source") == "dxf" else None,
+        "affectations": affectations,
+        "unites_modifiees": {u: v for u, v in aj["unites"].items() if u in unites},
+        "objets_modifies": [{"id": u, "nom": unites[u]["nom"], "groupe": unites[u]["g"], "niveau": unites[u]["niveau"], "codes": v}
+                            for u, v in sorted(aj["unites"].items()) if u in unites][:2000],
+        "supplements": aj["supplements"],
+        "journal": aj["journal"][-200:],
+        "nb_ajustements": len(aj["groupes"]) + len(aj["unites"]) + len(aj["quantites"]) + len(aj["supplements"]) + len(aj["natures"]),
+        "params": params if plan else None,
         "total_ht": round(sum(l["total"] for l in resultat), 2),
         "tva": 0.20,
     }
+
+
+def signature_groupe(g):
+    """Ce qui identifie un type d'ouvrage d'un projet à l'autre (sans les quantités)."""
+    if g.get("source") == "dxf":
+        return "dxf|%s|%s" % (g["genre"], g["type"])
+    return "ifc|%s|%s|%s" % (g["classe"], g["type"], g.get("materiau", ""))
+
+
+def appliquer_ajustement(aj, d, metre, correspondances, bibliotheque, unites):
+    """Applique une action de l'utilisateur aux ajustements (modifiés en place) et renvoie le texte du journal."""
+    codes = {p["code"]: p for p in bibliotheque}
+    groupes = {g["id"]: g for g in metre["groupes"]}
+    action = d.get("action")
+    cibles_g = [str(x) for x in d.get("groupes") or []]
+    cibles_u = [str(x) for x in d.get("unites") or []]
+    for x in cibles_g:
+        if x not in groupes:
+            raise ValueError("Groupe inconnu : %s" % x)
+    for x in cibles_u:
+        if x not in unites:
+            raise ValueError("Objet inconnu : %s" % x)
+    # tous les objets d'un groupe visés un par un = le groupe entier (choix retenu pour les prochains projets)
+    par_groupe = defaultdict(set)
+    for u in cibles_u:
+        par_groupe[unites[u]["g"]].add(u)
+    for gid, us in par_groupe.items():
+        if gid not in cibles_g and len(us) == groupes[gid]["nombre"] and \
+                us == {u for u, v in unites.items() if v["g"] == gid}:
+            cibles_g.append(gid)
+    # un objet dont le groupe entier est visé est traité avec son groupe
+    cibles_u = [u for u in cibles_u if unites[u]["g"] not in cibles_g]
+    code = str(d.get("code") or "").strip()
+
+    def libelle_cibles():
+        morceaux = [libelle_groupe(groupes[x]) for x in cibles_g[:4]]
+        if len(cibles_g) > 4:
+            morceaux.append("%d autre(s) groupe(s)" % (len(cibles_g) - 4))
+        if cibles_u:
+            morceaux.append("%d objet(s)" % len(cibles_u) if len(cibles_u) > 1 else unites[cibles_u[0]]["nom"])
+        return ", ".join(morceaux) or "?"
+
+    def normaliser(uid):
+        if uid in aj["unites"] and aj["unites"][uid] == codes_du_groupe(unites[uid]["g"], aj, correspondances, codes):
+            del aj["unites"][uid]
+
+    def objets_du_groupe(gid):
+        return [u for u in aj["unites"] if unites.get(u, {}).get("g") == gid]
+
+    def retenir(gid):
+        # le groupe devient une décision de l'utilisateur (et non plus une correction reprise)
+        if gid in aj["appris"]:
+            aj["appris"].remove(gid)
+
+    def verifier_code():
+        if code not in codes:
+            raise ValueError("Code de prix inconnu : %s" % (code or "(vide)"))
+        return "%s (%s)" % (code, codes[code]["designation"])
+
+    if action == "affecter":
+        nom = verifier_code()
+        remplacer = d.get("mode") == "remplacer"
+        if not cibles_g and not cibles_u:
+            raise ValueError("Choisissez d'abord des éléments dans le tableau ou la visionneuse.")
+        for gid in cibles_g:
+            actuels = codes_du_groupe(gid, aj, correspondances, codes)
+            if remplacer:
+                aj["groupes"][gid] = [code]
+                for u in objets_du_groupe(gid):
+                    del aj["unites"][u]
+            else:
+                aj["groupes"][gid] = actuels + ([code] if code not in actuels else [])
+                for u in objets_du_groupe(gid):
+                    if aj["unites"][u] and code not in aj["unites"][u]:
+                        aj["unites"][u].append(code)
+            aj["groupes"][gid] = aj["groupes"][gid][:MAX_CODES]
+            retenir(gid)
+        for uid in cibles_u:
+            base = codes_de_unite(uid, aj, correspondances, codes, unites)
+            aj["unites"][uid] = [code] if remplacer else (base + ([code] if code not in base else []))[:MAX_CODES]
+            normaliser(uid)
+        texte = ("%s remplace les prix de : %s" if remplacer else "%s ajouté à : %s") % (nom, libelle_cibles())
+
+    elif action == "retirer":
+        if not cibles_g and not cibles_u:
+            # la ligne entière disparaît : le code est retiré de tout ce qui l'utilisait
+            touches = 0
+            for gid in groupes:
+                actuels = codes_du_groupe(gid, aj, correspondances, codes)
+                if code in actuels:
+                    aj["groupes"][gid] = [x for x in actuels if x != code]
+                    retenir(gid)
+                    touches += 1
+            for uid in list(aj["unites"]):
+                if code in aj["unites"][uid]:
+                    aj["unites"][uid] = [x for x in aj["unites"][uid] if x != code]
+                    normaliser(uid)
+            aj["supplements"] = [s for s in aj["supplements"] if s.get("code") != code]
+            aj["quantites"].pop(code, None)
+            if code in aj["valides"]:
+                aj["valides"].remove(code)
+            texte = "Ligne %s supprimée (%d groupe(s) concerné(s))" % (code, touches)
+        else:
+            for gid in cibles_g:
+                aj["groupes"][gid] = [x for x in codes_du_groupe(gid, aj, correspondances, codes) if x != code]
+                for u in objets_du_groupe(gid):
+                    aj["unites"][u] = [x for x in aj["unites"][u] if x != code]
+                    normaliser(u)
+                retenir(gid)
+            for uid in cibles_u:
+                aj["unites"][uid] = [x for x in codes_de_unite(uid, aj, correspondances, codes, unites) if x != code]
+                normaliser(uid)
+            texte = "%s retiré de : %s" % (code, libelle_cibles())
+
+    elif action == "exclure":
+        if not cibles_g and not cibles_u:
+            raise ValueError("Choisissez d'abord des éléments à exclure.")
+        for gid in cibles_g:
+            aj["groupes"][gid] = []
+            for u in objets_du_groupe(gid):
+                del aj["unites"][u]
+            retenir(gid)
+        for uid in cibles_u:
+            aj["unites"][uid] = []
+            normaliser(uid)
+        texte = "Exclu du chiffrage : %s" % libelle_cibles()
+
+    elif action == "reinitialiser":
+        if not cibles_g and not cibles_u:
+            journal = aj["journal"]
+            aj.clear()
+            aj.update(ajustements_vides())
+            aj["journal"] = journal
+            texte = "Tous les ajustements annulés : retour aux propositions de l'IA"
+        else:
+            for gid in cibles_g:
+                aj["groupes"].pop(gid, None)
+                aj["natures"].pop(gid, None)
+                for u in objets_du_groupe(gid):
+                    del aj["unites"][u]
+                if gid in aj["appris"]:
+                    aj["appris"].remove(gid)
+            for uid in cibles_u:
+                aj["unites"].pop(uid, None)
+            texte = "Retour aux propositions de l'IA pour : %s" % libelle_cibles()
+
+    elif action == "quantite":
+        if code not in codes:
+            raise ValueError("Code de prix inconnu : %s" % code)
+        valeur = d.get("valeur")
+        if valeur in (None, ""):
+            aj["quantites"].pop(code, None)
+            texte = "%s : quantité recalculée depuis le métré" % code
+        else:
+            v = float(str(valeur).replace(",", ".").replace(" ", ""))
+            if not 0 <= v < 1e9:
+                raise ValueError("Quantité impossible : %s" % valeur)
+            aj["quantites"][code] = v
+            texte = "%s : quantité fixée à %s %s" % (code, fr(v, 3).rstrip("0").rstrip(","), codes[code]["unite"])
+
+    elif action == "supplement":
+        nom = verifier_code()
+        v = float(str(d.get("valeur") or 0).replace(",", ".").replace(" ", ""))
+        if not 0 <= v < 1e9:
+            raise ValueError("Quantité impossible : %s" % d.get("valeur"))
+        libelle = " ".join(str(d.get("libelle") or "Quantité saisie à la main").split())[:200]
+        numero = 1 + max([int(s["id"][1:]) for s in aj["supplements"] if str(s.get("id", "")).startswith("s")
+                          and s["id"][1:].isdigit()] or [0])
+        aj["supplements"].append({"id": "s%d" % numero, "code": code, "quantite": v, "libelle": libelle})
+        texte = "%s : %s %s ajoutés à la main (%s)" % (nom, fr(v, 3).rstrip("0").rstrip(","), codes[code]["unite"], libelle)
+
+    elif action == "supprimer_supplement":
+        ident = str(d.get("id") or "")
+        avant = len(aj["supplements"])
+        aj["supplements"] = [s for s in aj["supplements"] if s.get("id") != ident]
+        if len(aj["supplements"]) == avant:
+            raise ValueError("Saisie introuvable.")
+        texte = "Saisie manuelle retirée"
+
+    elif action == "valider":
+        if code not in codes:
+            raise ValueError("Code de prix inconnu : %s" % code)
+        if d.get("etat", True):
+            if code not in aj["valides"]:
+                aj["valides"].append(code)
+            texte = "Ligne %s validée" % code
+        else:
+            if code in aj["valides"]:
+                aj["valides"].remove(code)
+            texte = "Validation de la ligne %s retirée" % code
+
+    elif action == "nature":
+        nature = str(d.get("nature") or "")
+        if nature and nature not in NATURES_PLAN:
+            raise ValueError("Nature inconnue : %s" % nature)
+        for gid in cibles_g:
+            if nature:
+                aj["natures"][gid] = nature
+            else:
+                aj["natures"].pop(gid, None)
+            if gid in aj["groupes"]:
+                retenir(gid)
+        texte = "Nature de %s : %s" % (libelle_cibles(), LIBELLES_NATURE.get(nature, "celle proposée par l'IA"))
+    else:
+        raise ValueError("Action inconnue : %s" % action)
+
+    aj["journal"].append({"heure": datetime.now().strftime("%d/%m %H:%M:%S"), "texte": texte})
+    del aj["journal"][:-500]
+    return texte
+
+
+def corrections_changees(avant, apres, metre, bibliotheque):
+    """Ce que l'utilisateur a décidé (ou défait) au niveau des groupes entre deux états des ajustements :
+    c'est ce qui est retenu pour les projets suivants."""
+    codes = {p["code"]: p for p in bibliotheque}
+    apprendre, oublier = {}, []
+    for g in metre["groupes"]:
+        gid = g["id"]
+        if gid in apres["appris"]:
+            continue
+        if (avant["groupes"].get(gid), avant["natures"].get(gid)) == (apres["groupes"].get(gid), apres["natures"].get(gid)):
+            continue
+        if gid not in apres["groupes"]:
+            if gid in avant["groupes"]:
+                oublier.append(signature_groupe(g))
+        else:
+            lst = apres["groupes"][gid]
+            apprendre[signature_groupe(g)] = {
+                "codes": list(lst), "nature": apres["natures"].get(gid, ""),
+                "designations": {x: codes[x]["designation"] for x in lst if x in codes}, "libelle": libelle_groupe(g)}
+    return apprendre, oublier
+
+
+# --- Données locales : ajustements par maquette et corrections apprises -----------------------------
+# Emplacement modifiable (variable CHIFFRAGE_DONNEES) : les tests travaillent dans un dossier temporaire.
+DONNEES = os.environ.get("CHIFFRAGE_DONNEES") or os.path.join(DOSSIER, "donnees_locales")
+
+
+def ecrire_json(chemin, donnees):
+    try:
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        temporaire = chemin + ".tmp"
+        with open(temporaire, "w", encoding="utf-8") as f:
+            json.dump(donnees, f, ensure_ascii=False)
+        os.replace(temporaire, chemin)
+        return True
+    except OSError:
+        return False  # dossier en lecture seule : les ajustements restent valables pour la session
+
+
+def lire_json_fichier(chemin, defaut):
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return defaut
+
+
+def chemin_ajustements(empreinte_fichier):
+    return os.path.join(DONNEES, "chiffrages", re.sub(r"[^0-9a-f]", "", empreinte_fichier)[:40] + ".json")
+
+
+class Corrections:
+    """Corrections de l'économiste, retenues d'un projet à l'autre : « tel type d'ouvrage se chiffre
+    avec tels codes ». Elles sont reprises automatiquement quand le même type réapparaît, si les codes
+    existent toujours dans la bibliothèque avec la même désignation."""
+
+    def __init__(self, chemin):
+        self.chemin = chemin
+        self.verrou = threading.Lock()
+
+    def tout(self):
+        with self.verrou:
+            d = lire_json_fichier(self.chemin, {})
+            return d if isinstance(d, dict) else {}
+
+    def modifier(self, apprendre, oublier):
+        if not apprendre and not oublier:
+            return
+        with self.verrou:
+            d = lire_json_fichier(self.chemin, {})
+            d = d if isinstance(d, dict) else {}
+            for s in oublier:
+                d.pop(s, None)
+            for s, v in apprendre.items():
+                d[s] = {**v, "date": datetime.now().strftime("%Y-%m-%d")}
+            while len(d) > 5000:
+                d.pop(next(iter(d)))
+            ecrire_json(self.chemin, d)
+
+    def vider(self):
+        with self.verrou:
+            try:
+                os.remove(self.chemin)
+            except OSError:
+                pass
+
+    def appliquer(self, aj, metre, bibliotheque):
+        """Reprend les corrections connues pour les groupes que l'utilisateur n'a pas encore touchés."""
+        connues = self.tout()
+        if not connues:
+            return 0
+        codes = {p["code"]: p for p in bibliotheque}
+        repris = []
+        for g in metre["groupes"]:
+            c = connues.get(signature_groupe(g))
+            if not c or g["id"] in aj["groupes"] or not isinstance(c.get("codes"), list):
+                continue
+            if any(x not in codes or codes[x]["designation"] != (c.get("designations") or {}).get(x) for x in c["codes"]):
+                continue  # bibliothèque différente : la correction ne s'applique pas
+            aj["groupes"][g["id"]] = list(c["codes"])[:MAX_CODES]
+            if c.get("nature") in NATURES_PLAN:
+                aj["natures"][g["id"]] = c["nature"]
+            if g["id"] not in aj["appris"]:
+                aj["appris"].append(g["id"])
+            repris.append(libelle_groupe(g))
+        if repris:
+            aj["journal"].append({"heure": datetime.now().strftime("%d/%m %H:%M:%S"),
+                                  "texte": "Corrections de vos projets précédents reprises pour : " + ", ".join(repris[:6])
+                                  + (" et %d autre(s)" % (len(repris) - 6) if len(repris) > 6 else "")})
+        return len(repris)
+
+
+CORRECTIONS = Corrections(os.path.join(DONNEES, "corrections.json"))
 
 
 def repondre_question(cle, modele, question, metre, estimation, bibliotheque, cctp=None, prix_fictifs=False, reflexion=False):
@@ -1135,6 +1665,9 @@ def repondre_question(cle, modele, question, metre, estimation, bibliotheque, cc
         "hors_chiffrage": estimation.get("ignores", []),
         "total_ht": estimation["total_ht"],
     }
+    if estimation.get("journal"):
+        # les modifications de l'économiste : l'IA doit les connaître pour ne pas les contredire
+        contexte["modifications_manuelles_de_l_economiste"] = [j["texte"] for j in estimation["journal"][-40:]]
     if estimation.get("absents"):
         contexte["ouvrages_du_cctp_absents_de_la_maquette"] = estimation["absents"]
     consigne = CONSIGNE_QUESTION % (" Les prix de la bibliothèque sont fictifs (démonstration) : rappelle-le si tu donnes un montant."
@@ -1183,7 +1716,8 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
     total_fill = PatternFill("solid", fgColor="F2F2F2")
     jaune = PatternFill("solid", fgColor="FFFF00")
     conf_fill = {"haute": PatternFill("solid", fgColor="D9EAD3"), "moyenne": PatternFill("solid", fgColor="FCE5CD"),
-                 "faible": PatternFill("solid", fgColor="F4CCCC")}
+                 "faible": PatternFill("solid", fgColor="F4CCCC"), "manuelle": PatternFill("solid", fgColor="DDEBF7"),
+                 "validée": PatternFill("solid", fgColor="A9D08E")}
     fin = Side(style="thin", color="BFBFBF")
     bord = Border(left=fin, right=fin, top=fin, bottom=fin)
     EUR = '#,##0.00 "€";-#,##0.00 "€";"-"'
@@ -1216,18 +1750,19 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
     ws = wb.create_sheet("Estimation", 0)
     ws["A1"] = "Estimation sommaire — " + metre["fichier"]
     ws["A1"].font = Font(name=POLICE, bold=True, size=14)
-    ws["A2"] = ("Générée le %s par le POC Chiffrage IA (correspondance des prix : %s). "
+    ws["A2"] = ("Générée le %s par SurveIA (correspondance des prix : %s). "
                 "Métré calculé par le code ; %s.%s" % (
                     datetime.now().strftime("%d/%m/%Y %H:%M"), modele,
                     "prix de démonstration fictifs" if estimation.get("prix_fictifs") else "prix issus de la bibliothèque fournie",
                     (" CCTP pris en compte : %s." % estimation["cctp"]["fichier"]) if estimation.get("cctp") else ""))
     ws["A2"].font = Font(name=POLICE, italic=True, color="7F7F7F")
     ws["A3"] = ("Légende : texte bleu = valeur modifiable ; texte vert = prix lu dans l'onglet « Bibliothèque de prix » ; "
-                "fond jaune = quantité à saisir ; colonne « Confiance IA » : fiabilité de la correspondance proposée.")
+                "fond jaune = quantité à saisir ; colonne « Confiance / statut » : fiabilité de la correspondance proposée par l'IA, "
+                "« manuelle » si vous l'avez choisie, « validée » si vous l'avez relue.")
     ws["A3"].font = Font(name=POLICE, size=9, color="595959")
 
     cols = ["Lot", "Code", "Désignation", "Éléments sources", "Unité", "Quantité", "PU HT (€)", "Total HT (€)",
-            "Confiance IA", "Justification IA, articles du CCTP, points à vérifier"]
+            "Confiance / statut", "Justification IA, articles du CCTP, points à vérifier"]
     r = 5
     for j, t in enumerate(cols, 1):
         c = ws.cell(row=r, column=j, value=t)
@@ -1262,7 +1797,10 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
             q.font, q.number_format = bleu, QTE
             if l["qte_manquante"] and not l["quantite"]:
                 q.fill = jaune
-                q.comment = Comment("Quantité absente de la maquette : à saisir.", "POC Chiffrage IA")
+                q.comment = Comment("Quantité absente de la maquette : à saisir.", "SurveIA")
+            elif l.get("qte_manuelle"):
+                q.comment = Comment("Quantité saisie à la main%s." % (
+                    " (métré calculé : %s %s)" % (fr(l["quantite_calculee"], 3), l["unite"]) if l.get("quantite_calculee") is not None else ""), "SurveIA")
             pu = ws.cell(row=r, column=7, value="=IFERROR(INDEX('Bibliothèque de prix'!$E$2:$E$%d,MATCH(B%d,'Bibliothèque de prix'!$A$2:$A$%d,0)),0)" % (n_bib, r, n_bib))
             pu.font, pu.number_format = vert, EUR
             tot = ws.cell(row=r, column=8, value="=F%d*G%d" % (r, r))
@@ -1280,7 +1818,7 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
 
     # Ouvrages du CCTP absents de la maquette mais présents dans la bibliothèque : de vraies lignes,
     # quantité à 0 sur fond jaune. L'économiste la saisit et le total se met à jour.
-    a_completer = [a for a in estimation.get("absents") or [] if a.get("code")]
+    a_completer = [a for a in estimation.get("absents") or [] if a.get("code") and not a.get("chiffre")]
     if a_completer:
         ws.cell(row=r, column=1, value="À compléter : ouvrages du CCTP non modélisés (quantités à saisir)").font = Font(name=POLICE, bold=True, color="C55A11")
         for j in range(1, 11):
@@ -1299,7 +1837,7 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
                 c.font, c.border, c.alignment = normal, bord, haut
             q = ws.cell(row=r, column=6, value=0)
             q.font, q.number_format, q.fill = bleu, QTE, jaune
-            q.comment = Comment("Ouvrage décrit au CCTP mais absent de la maquette : saisissez la quantité.", "POC Chiffrage IA")
+            q.comment = Comment("Ouvrage décrit au CCTP mais absent de la maquette : saisissez la quantité.", "SurveIA")
             pu = ws.cell(row=r, column=7, value="=IFERROR(INDEX('Bibliothèque de prix'!$E$2:$E$%d,MATCH(B%d,'Bibliothèque de prix'!$A$2:$A$%d,0)),0)" % (n_bib, r, n_bib))
             pu.font, pu.number_format = vert, EUR
             tot = ws.cell(row=r, column=8, value="=F%d*G%d" % (r, r))
@@ -1360,6 +1898,16 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
             c.font, c.alignment = normal, haut
             r += 1
         r += 1
+    if estimation.get("exclus"):
+        ws.cell(row=r, column=1, value="Retirés du chiffrage à la main").font = Font(name=POLICE, bold=True, color="7F7F7F")
+        r += 1
+        for n in estimation["exclus"]:
+            ws.cell(row=r, column=2, value=n["groupe"]).font = normal
+            ws.cell(row=r, column=4, value=n["element"]).font = normal
+            c = ws.cell(row=r, column=10, value=n["raison"])
+            c.font, c.alignment = normal, haut
+            r += 1
+        r += 1
     if estimation.get("ignores"):
         ws.cell(row=r, column=1, value="Écartés par l'IA (hors chiffrage)").font = Font(name=POLICE, bold=True, color="7F7F7F")
         r += 1
@@ -1389,6 +1937,11 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
     for l in estimation["lignes"]:
         for gid in l["groupes"]:
             codes_par_groupe[gid].append(l["code"])
+    for gid, a in (estimation.get("affectations") or {}).items():
+        if a.get("manuel") or a.get("objets_modifies"):
+            codes_par_groupe[gid] = [", ".join(codes_par_groupe.get(gid, [])) + (
+                " (choix manuel)" if a.get("manuel") else "") + (
+                " ; %d objet(s) affecté(s) à part" % a["objets_modifies"] if a.get("objets_modifies") else "")]
     for g in metre["groupes"]:
         wm.append([g["id"], g["categorie"],
                    LIBELLES_NATURE.get(natures.get(g["id"]), "") if plan else g["classe"],
@@ -1420,6 +1973,30 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
                 "(Qto_*) ou, à défaut, dans les propriétés de l'élément." % (metre["fichier"], metre["schema"], metre["unite_longueur"]))
     wm.cell(row=r, column=1, value=note).font = Font(name=POLICE, italic=True, color="7F7F7F")
 
+    # ---- Onglet Modifications : tout ce que l'utilisateur a changé par rapport à l'IA ----
+    journal = estimation.get("journal") or []
+    if journal or estimation.get("unites_modifiees"):
+        wj = wb.create_sheet("Modifications")
+        wj.append(["Date", "Modification"])
+        for e in journal:
+            wj.append([e.get("heure", ""), e.get("texte", "")])
+        for c in wj[1]:
+            c.font, c.fill, c.border = entete_font, entete_fill, bord
+        if estimation.get("unites_modifiees"):
+            wj.append([])
+            wj.append(["Objet", "Lignes de prix choisies à la main (vide = retiré du chiffrage)"])
+            for c in wj[wj.max_row]:
+                c.font, c.fill, c.border = entete_font, entete_fill, bord
+            for o in estimation.get("objets_modifies") or []:
+                wj.append([o["groupe"], "%s (%s, niveau %s) : %s" % (o["nom"], o["id"], o["niveau"], ", ".join(o["codes"]) or "retiré du chiffrage")])
+        for ligne in wj.iter_rows(min_row=2):
+            for c in ligne:
+                if not c.font.bold:
+                    c.font = normal
+        wj.column_dimensions["A"].width = 16
+        wj.column_dimensions["B"].width = 120
+        wj.freeze_panes = "A2"
+
     neutraliser_formules(wb)
     tampon = io.BytesIO()
     wb.save(tampon)
@@ -1431,7 +2008,11 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
 # =============================================================================
 
 ETAT = {"cle": None, "modele": "deepseek-flash", "metre": None, "estimation": None, "cctp": None,
-        "bibliotheque": None, "nom_biblio": None}
+        "bibliotheque": None, "nom_biblio": None,
+        # ajustements manuels : objets chiffrables, décisions de l'utilisateur, annuler / rétablir,
+        # et ce qu'il faut pour recalculer l'estimation sans rappeler l'IA
+        "unites": {}, "ajustements": ajustements_vides(), "historique": [], "refaire": [], "calcul": None}
+HISTORIQUE_MAX = 100
 VERROU = threading.Lock()
 TACHES = {}  # calculs longs lancés en arrière-plan : id -> état
 TAILLE_MAX_ENVOI = 2 * 10**9  # 2 Go : au-delà, même une grosse maquette est suspecte
@@ -1471,6 +2052,33 @@ def lancer_tache(genre, fonction, cle_unique=None):
 
     threading.Thread(target=executer, daemon=True).start()
     return ident
+
+
+def recalculer_estimation():
+    """Recalcule l'estimation après un ajustement, sans appel à l'IA (à appeler sous VERROU)."""
+    c = ETAT.get("calcul")
+    if not c or not ETAT["metre"] or c["metre"] is not ETAT["metre"]:
+        return None
+    est = calculer_estimation(ETAT["metre"], ETAT["bibliotheque"], c["correspondances"], c["absents"], c["params"],
+                              c["cctp"], ETAT["ajustements"], ETAT["unites"])
+    est.update(c["infos"])
+    ETAT["estimation"] = est
+    return est
+
+
+def sauver_ajustements():
+    """Sauvegarde automatique des ajustements, par maquette (retrouvés si on la recharge plus tard)."""
+    m = ETAT["metre"]
+    if m and m.get("empreinte"):
+        ecrire_json(chemin_ajustements(m["empreinte"]), {
+            "fichier": m["fichier"], "date": datetime.now().strftime("%Y-%m-%d %H:%M"), "ajustements": ETAT["ajustements"]})
+
+
+def resume_ajustements():
+    aj = ETAT["ajustements"]
+    return {"annuler": len(ETAT["historique"]), "retablir": len(ETAT["refaire"]),
+            "dernier": aj["journal"][-1]["texte"] if aj["journal"] else "",
+            "suivant": ETAT["refaire"][-1]["journal"][-1]["texte"] if ETAT["refaire"] and ETAT["refaire"][-1]["journal"] else ""}
 
 
 def prix_fictifs():
@@ -1563,6 +2171,17 @@ class Gestionnaire(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
+        try:
+            self._do_get()
+        except CONNEXION_COUPEE:
+            pass
+        except Exception as e:  # une erreur ne doit jamais couper la connexion sans réponse
+            try:
+                self._erreur(message_erreur(e), 500)
+            except Exception:
+                pass
+
+    def _do_get(self):
         if not self._appel_autorise():
             return self._erreur("Accès refusé : ouvrez l'application depuis l'adresse affichée dans le Terminal.", 403)
         url = urlparse(self.path)
@@ -1577,7 +2196,23 @@ class Gestionnaire(BaseHTTPRequestHandler):
         elif url.path == "/api/etat":
             self._json({"cle_ok": bool(ETAT["cle"]), "modele": ETAT["modele"], "modeles": MODELES,
                         "bibliotheque": {"nom": ETAT["nom_biblio"], "nb": len(ETAT["bibliotheque"] or [])},
-                        "cctp": resume_cctp(), "memoire": MEMOIRE.taille()})
+                        "cctp": resume_cctp(), "memoire": MEMOIRE.taille(), "corrections": len(CORRECTIONS.tout())})
+        elif url.path == "/api/unites":
+            # objets d'un groupe, avec leurs quantités et leurs lignes de prix actuelles
+            gid = parse_qs(url.query).get("groupe", [""])[0]
+            with VERROU:
+                c = ETAT.get("calcul")
+                codes = {p["code"]: p for p in ETAT["bibliotheque"] or []}
+                corr = c["correspondances"] if c else {}
+                liste = [{"id": u, **{k: v[k] for k in ("nom", "niveau", "surface", "volume", "longueur")},
+                          "codes": codes_de_unite(u, ETAT["ajustements"], corr, codes, ETAT["unites"]),
+                          "modifie": u in ETAT["ajustements"]["unites"]}
+                         for u, v in ETAT["unites"].items() if v["g"] == gid]
+            liste.sort(key=lambda x: (x["niveau"], x["nom"]))
+            self._json(liste[:5000])
+        elif url.path == "/api/bibliotheque/liste":
+            # pour choisir une ligne de prix à la main (recherche dans l'interface)
+            self._json([{k: p[k] for k in ("code", "lot", "designation", "unite", "pu")} for p in ETAT["bibliotheque"] or []])
         elif url.path in ("/visionneuse.js",):
             with open(os.path.join(DOSSIER, url.path.lstrip("/")), "rb") as f:
                 corps = f.read()
@@ -1652,6 +2287,39 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 ETAT["modele"] = d.get("modele") or ETAT["modele"]
                 return self._json({"ok": True, "modele": ETAT["modele"]})
 
+            if url.path == "/api/ajuster":
+                # Ajustement manuel : instantané, sans IA (fonctionne même clé oubliée)
+                d = json.loads(self._corps() or b"{}")
+                with VERROU:
+                    if not ETAT.get("calcul") or not ETAT["estimation"]:
+                        return self._erreur("Lancez d'abord la correspondance des prix (étape 4).")
+                    action = d.get("action")
+                    avant = ETAT["ajustements"]
+                    if action in ("annuler", "retablir"):
+                        pile, autre = (ETAT["historique"], ETAT["refaire"]) if action == "annuler" else (ETAT["refaire"], ETAT["historique"])
+                        if not pile:
+                            return self._erreur("Rien à %s." % ("annuler" if action == "annuler" else "rétablir"))
+                        texte = (avant if action == "annuler" else pile[-1])["journal"][-1]["texte"] if (avant if action == "annuler" else pile[-1])["journal"] else ""
+                        autre.append(avant)
+                        ETAT["ajustements"] = pile.pop()
+                    else:
+                        nouveau = copy.deepcopy(avant)
+                        texte = appliquer_ajustement(nouveau, d, ETAT["metre"], ETAT["calcul"]["correspondances"],
+                                                     ETAT["bibliotheque"], ETAT["unites"])
+                        ETAT["historique"].append(avant)
+                        del ETAT["historique"][:-HISTORIQUE_MAX]
+                        ETAT["refaire"] = []
+                        ETAT["ajustements"] = nouveau
+                    CORRECTIONS.modifier(*corrections_changees(avant, ETAT["ajustements"], ETAT["metre"], ETAT["bibliotheque"]))
+                    sauver_ajustements()
+                    est = recalculer_estimation()
+                    est["historique"] = resume_ajustements()
+                    return self._json({"estimation": est, "message": ("Annulé : " if action == "annuler" else "Rétabli : " if action == "retablir" else "") + texte})
+
+            if url.path == "/api/corrections_vider":
+                CORRECTIONS.vider()
+                return self._json({"ok": True})
+
             if not self._exiger_cle():
                 return
 
@@ -1663,7 +2331,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     ETAT["bibliotheque"] = lire_bibliotheque(contenu)
                     ETAT["nom_biblio"] = params.get("nom", ["bibliotheque.csv"])[0]
                     ETAT["biblio_exemple"] = False
-                ETAT["estimation"] = None
+                ETAT["estimation"], ETAT["calcul"] = None, None
                 return self._json({"nom": ETAT["nom_biblio"], "nb": len(ETAT["bibliotheque"])})
 
             if url.path == "/api/cctp":
@@ -1674,12 +2342,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     contenu, nom = self._corps(), params.get("nom", ["cctp.pdf"])[0]
                 cctp = lecture_cctp.lire_cctp(contenu, nom)
                 with VERROU:
-                    ETAT["cctp"], ETAT["estimation"] = cctp, None
+                    ETAT["cctp"], ETAT["estimation"], ETAT["calcul"] = cctp, None, None
                 return self._json(resume_cctp())
 
             if url.path == "/api/cctp_retirer":
                 with VERROU:
-                    ETAT["cctp"], ETAT["estimation"] = None, None
+                    ETAT["cctp"], ETAT["estimation"], ETAT["calcul"] = None, None, None
                 return self._json({"ok": True})
 
             if url.path == "/api/metre":
@@ -1697,6 +2365,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 if extension not in (".dwg", ".dxf", ".ifc"):
                     return self._erreur("Format non pris en charge : utilisez un fichier .ifc, .dxf ou .dwg.")
                 taille = len(contenu) / 1e6
+                empreinte_fichier = hashlib.sha1(contenu).hexdigest()
                 with VERROU:
                     ETAT["numero_chargement"] = numero = ETAT.get("numero_chargement", 0) + 1
 
@@ -1717,10 +2386,19 @@ class Gestionnaire(BaseHTTPRequestHandler):
                                        "elements": metre.pop("_elements"), "geometrie": None}
                     else:
                         visionneuse = {"source": "dxf", "dessin": metre.pop("_dessin")}
+                    unites = metre.pop("_unites", {})
+                    metre["nb_unites"] = len(unites)
+                    # Ajustements déjà faits sur ce même fichier (sauvegarde automatique) : on les reprend
+                    metre["empreinte"] = empreinte_fichier
+                    sauve = lire_json_fichier(chemin_ajustements(empreinte_fichier), None)
+                    ajustements = normaliser_ajustements(sauve.get("ajustements") if isinstance(sauve, dict) else None)
+                    metre["ajustements_repris"] = {"nb": len(ajustements["journal"]), "date": sauve.get("date")} \
+                        if isinstance(sauve, dict) and ajustements["journal"] else None
                     with VERROU:
                         if ETAT["numero_chargement"] != numero:
                             raise ValueError("Chargement remplacé par un fichier chargé plus récemment.")
-                        ETAT["metre"], ETAT["estimation"], ETAT["visionneuse"] = metre, None, visionneuse
+                        ETAT.update({"metre": metre, "estimation": None, "visionneuse": visionneuse, "unites": unites,
+                                     "ajustements": ajustements, "historique": [], "refaire": [], "calcul": None})
                     return metre
 
                 return self._json({"tache": lancer_tache("metre", mesurer)})
@@ -1740,13 +2418,21 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 def chiffrer(progres):
                     t0 = time.time()
                     est = associer_prix(cle, modele, metre, biblio, reglages, cctp, reflexion, progres, forcer)
-                    est["prix_fictifs"] = prix_fictifs()
-                    est["duree"] = round(time.time() - t0, 1)
-                    est["modele"] = modele + (" (réflexion)" if reflexion else "")
+                    infos = {k: est[k] for k in ("appels", "jetons_entree", "jetons_sortie", "jetons_cache", "depuis_memoire",
+                                                 "nb_groupes", "decoupages", "relances")}
+                    infos.update({"prix_fictifs": prix_fictifs(), "duree": round(time.time() - t0, 1),
+                                  "modele": modele + (" (réflexion)" if reflexion else "")})
                     with VERROU:
                         if ETAT["metre"] is not metre:
                             raise ValueError("La maquette ou le plan a changé pendant le calcul : relancez la correspondance.")
-                        ETAT["estimation"] = est
+                        # vos corrections des projets précédents s'appliquent aux types d'ouvrages déjà rencontrés
+                        infos["corrections_reprises"] = CORRECTIONS.appliquer(ETAT["ajustements"], metre, biblio)
+                        ETAT["calcul"] = {"metre": metre, "correspondances": est["_correspondances"], "absents": est["_absents"],
+                                          "params": reglages, "cctp": cctp, "infos": infos}
+                        est = recalculer_estimation()
+                        if infos["corrections_reprises"]:
+                            sauver_ajustements()
+                        est["historique"] = resume_ajustements()
                     return est
 
                 cle_calcul = "chiffrage-%d-%s-%s-%s" % (id(metre), reflexion, forcer, json.dumps(reglages, sort_keys=True))
@@ -1834,7 +2520,19 @@ def diagnostic():
         geo = geometrie_ifc.construire(m["_lecteur"], m["_facteur_longueur"], m["_elements"])
         ligne(len(geo) > 1000, "Géométrie 3D de la visionneuse (%d Ko)" % (len(geo) // 1024))
         ligne(len(d["_dessin"]["prims"]) > 0, "Dessin 2D de la visionneuse : %d traits" % len(d["_dessin"]["prims"]))
-        est = calculer_estimation(m, ETAT["bibliotheque"], {}, [], None, None)
+        # Ajustements manuels : un objet déplacé vers une autre ligne, sans IA (correspondances fictives)
+        biblio = ETAT["bibliotheque"]
+        corr = {g["id"]: {"ouvrages": [{"code": biblio[0]["code"], "confiance": "haute"}]} for g in m["groupes"]}
+        unites = m["_unites"]
+        uid = next(u for u, v in unites.items() if v["surface"])
+        aj = ajustements_vides()
+        appliquer_ajustement(aj, {"action": "affecter", "unites": [uid], "code": biblio[1]["code"], "mode": "remplacer"},
+                             m, corr, biblio, unites)
+        est0 = calculer_estimation(m, biblio, corr, [], None, None)
+        est = calculer_estimation(m, biblio, corr, [], None, None, aj, unites)
+        n0 = sum(l["quantite"] for l in est0["lignes"] if nature_unite(l["unite"]) == "surface")
+        n1 = sum(l["quantite"] for l in est["lignes"] if nature_unite(l["unite"]) == "surface")
+        ligne(abs(n0 - n1) < 0.01 and len(est["lignes"]) == 2, "Ajustements manuels (objet déplacé d'une ligne de prix à une autre)")
         taille = len(exporter_excel(m, est, ETAT["bibliotheque"], "diagnostic"))
         ligne(taille > 1000, "Génération d'un fichier Excel (%d octets)" % taille)
     except Exception as e:
@@ -1867,6 +2565,9 @@ def diagnostic():
         else:
             ligne(False, "Connexion à %s : %s" % (URL_API, e.args[0]))
     print("  [info]   Mémoire des correspondances : %d entrée(s)" % MEMOIRE.taille())
+    dossier_chiffrages = os.path.join(DONNEES, "chiffrages")
+    print("  [info]   Vos modifications : %d fichier(s) suivi(s), %d choix retenu(s) pour les prochains projets" % (
+        len(os.listdir(dossier_chiffrages)) if os.path.isdir(dossier_chiffrages) else 0, len(CORRECTIONS.tout())))
 
     print()
     if problemes:

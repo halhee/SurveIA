@@ -20,10 +20,30 @@
 5. **Export Excel** : lots, sous-totaux, TVA et TTC, avec les formules conservées. Les prix se modifient dans l'onglet bibliothèque, et les quantités manquantes sont à saisir sur fond jaune.
 6. **Questions libres** sur le chiffrage : « Quel impact si on passe les fenêtres en PVC ? », etc.
 7. **Visionneuse** : cliquez une ligne pour voir les objets concernés, ou un objet pour voir sa fiche et ses prix.
+8. **Ajustements en direct** : vous corrigez l'IA en quelques clics, par catégorie, par type ou objet par objet (voir ci-dessous). Le total se recalcule instantanément, sans appel à l'IA.
 
 | Visionneuse 2D (plan DXF) | Vue en plan d'un niveau (IFC) |
 |---|---|
 | ![Plan 2D](docs/captures/plan_2d_portes.png) | ![Vue de dessus](docs/captures/vue_de_dessus_locaux.png) |
+
+## Ajuster le chiffrage à la main
+
+L'IA propose, l'économiste décide. Une fois les prix associés, tout se corrige en direct, depuis le tableau ou depuis la maquette :
+
+- **Sélectionner** : un clic sur une ligne du métré (un type entier) ou sur un objet dans la vue 3D / 2D. <kbd>Maj</kbd>+clic (ou <kbd>⌘</kbd>+clic) ajoute ou retire des éléments. La fiche propose d'étendre la sélection à **tout le type**, à **toute la catégorie** ou de ne garder qu'**un niveau**.
+- **Chiffrer avec…** : une recherche dans la bibliothèque de prix, avec les lignes proposées par l'IA en tête. Chaque prix indique si sa quantité est **mesurable** sur la sélection (m², m³, ml, u) ou restera à saisir. Deux modes : *remplacer* les prix actuels, ou *ajouter* une ligne (une finition en plus, par exemple).
+- **Retirer** : la croix d'un élément source retire ce type ou ces objets de la ligne. On peut aussi exclure une sélection du chiffrage, puis la réintégrer.
+- **Ouvrir une ligne** (clic) : ses éléments apparaissent en bleu dans la vue. On peut y ajouter la sélection, y déplacer des éléments, **fixer la quantité** (la quantité calculée reste affichée), **valider** la ligne ou la supprimer.
+- **Saisie manuelle** : une quantité pour un ouvrage non modélisé. Les ouvrages décrits au CCTP mais absents de la maquette ont un bouton « Chiffrer… ».
+- **Plans 2D** : la nature de chaque calque (mur, sol, linéaire…) se change dans le métré, ce qui change la règle de calcul de la quantité.
+- **Contrôle** : dans la visionneuse, la case « Contrôle » colore chaque objet selon son état : chiffré par l'IA, chiffré à la main, non chiffré, hors chiffrage. Les oublis sautent aux yeux.
+- **Annuler / Rétablir** (<kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>, ou <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>) et **historique** de toutes les modifications, repris dans l'onglet « Modifications » de l'Excel.
+- **Sauvegarde automatique** : vos modifications sont retrouvées quand vous rechargez le même fichier.
+- **Apprentissage** : un choix fait sur un type entier (« ce type de mur se chiffre avec telle ligne ») est retenu, puis appliqué automatiquement dans vos projets suivants si le même type y apparaît, avec la même ligne de bibliothèque.
+
+| Choisir un prix pour une sélection | Ligne ouverte (bleu) et mode « Contrôle » |
+|---|---|
+| ![Choix d'une ligne de prix](docs/captures/ajustement_choix_prix.png) | ![Ligne ouverte](docs/captures/ajustement_ligne.png) |
 
 ## Installation
 
@@ -88,6 +108,7 @@ Les fichiers IFC et DXF eux-mêmes ne sont jamais envoyés. **Vérifiez que c'es
 | `lecture_cctp.py` | Lecture des CCTP (PDF, `.docx`, `.txt`) |
 | `geometrie_ifc.py` | Formes 3D des éléments IFC : extrusions, polyèdres, maillages IFC4, types partagés, découpes |
 | `interface.html`, `visionneuse.js` | Interface web et visionneuse (WebGL 2 pour la 3D, SVG pour les plans), sans bibliothèque externe |
+| `donnees_locales/` | Créé à l'usage : vos modifications par fichier et vos choix retenus (jamais publié) |
 | `outils/` | Générateurs des fichiers de démo (reproductibles à l'octet près) |
 | `tests/` | Tests de bout en bout contre un faux DeepSeek local |
 
@@ -96,12 +117,13 @@ Dépendances : `openpyxl` (Excel) et `pypdf` (CCTP en PDF). Les lecteurs IFC et 
 ## Tests
 
 ```bash
-python3 tests/test_bout_en_bout.py          # 46 vérifications, moins d’une minute
+python3 tests/test_bout_en_bout.py          # 76 vérifications, environ une minute
 ```
 
 Les tests n'ont besoin **ni de clé API ni de réseau**. Un faux DeepSeek local (`tests/faux_deepseek.py`) imite le modèle, y compris ses défauts : réponses tronquées, groupes oubliés, paramètre refusé. Sont vérifiés :
 
 - le métré et l'estimation ;
+- les ajustements manuels (objets, types, quantités, annuler / rétablir, sauvegarde, apprentissage) ;
 - les montants de l'Excel ;
 - la mémoire des correspondances ;
 - la sécurité (requêtes d'autres sites refusées) ;
@@ -116,7 +138,8 @@ C'est un POC, pas un outil de production :
 - plans 2D : ouvertures non déduites des murs ; les fenêtres ne donnent qu'un nombre ;
 - visionneuse : réservations non percées ; formes NURBS et révolutions non dessinées (elles restent dans le métré) ;
 - DXF binaire et PDF scannés non lus ;
-- les correspondances proposées par l'IA doivent être relues par un économiste.
+- les correspondances proposées par l'IA doivent être relues par un économiste ;
+- plans 2D : un calque se chiffre en entier (seuls les blocs et les locaux se choisissent un par un).
 
 Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.
 

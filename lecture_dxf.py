@@ -679,8 +679,20 @@ def extraire_metre_dxf(contenu: bytes, nom_fichier="plan.dxf", unite="auto"):
     plan["facteur"] = f
     for g in groupes:
         g.pop("_prims", None)
+    # Unités chiffrables séparément : chaque bloc inséré (porte, fenêtre…) et chaque local
+    groupe_bloc = {g["type"]: g["id"] for g in groupes if g["genre"] == "bloc"}
+    unites = {}
+    for numero, ib, *_ in plan["emprises"]:
+        nom = plan["blocs"][ib]
+        if nom in groupe_bloc:
+            unites["i%d" % numero] = {"g": groupe_bloc[nom], "nom": "Bloc « %s » n° %d" % (nom, numero + 1),
+                                      "niveau": nom_fichier, "surface": None, "volume": None, "longueur": None}
+    for prim, (nom, aire_m2, gid) in plan["locaux"].items():
+        if gid:
+            unites["l%s" % prim] = {"g": gid, "nom": nom, "niveau": nom_fichier, "surface": aire_m2, "volume": None, "longueur": None}
     return {
         "_dessin": plan,
+        "_unites": unites,
         "fichier": nom_fichier, "source": "dxf", "schema": "DXF",
         "nb_entites": sum(1 for c, _ in paires if c == 0),
         "nb_elements": sum(g["nombre"] for g in groupes if g["genre"] != "calque") + sum(1 for g in groupes if g["genre"] == "calque"),

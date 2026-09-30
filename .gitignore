@@ -1,6 +1,8 @@
 # Données de projet : réponses de l'IA sur VOS maquettes (ne jamais publier)
 memoire_correspondances.json
 memoire_correspondances.json.tmp
+# Vos modifications par fichier et vos choix retenus (données de projet)
+donnees_locales/
 
 # Estimations exportées et fichiers de travail
 Estimation_*.xlsx

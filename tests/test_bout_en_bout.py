@@ -283,9 +283,112 @@ def vis():
     verifier(sum(len(c["prims"]) for c in locaux) == 9, "9 locaux cliquables")
 
 
+def ajuster(corps):
+    d = j("/api/ajuster", corps)
+    if "erreur" in d:
+        print("     (réponse : %s)" % d["erreur"])
+    return d.get("estimation") or d
+
+
+def ajust():
+    print("== Ajustements manuels (sans IA)")
+    j("/api/cle", {"cle": "sk-test-1234567890"})
+    m = tache("/api/metre?demo=ifc")
+    verifier(m.get("nb_unites") == 118 and m.get("empreinte"), "118 objets chiffrables un par un")
+    e0 = tache("/api/chiffrer", {"hauteur": 2.7})
+    L0 = lignes(e0)
+    voile = next(g for g in m["groupes"] if "Voile BA 20" in g["type"])
+    objets = j("/api/unites?groupe=" + voile["id"])
+    verifier(len(objets) == voile["nombre"] and all(o["codes"] == ["GO-01"] for o in objets), "%d voiles listés, tous en GO-01" % len(objets))
+    deux = [o["id"] for o in objets[:2]]
+    surf2 = sum(o["surface"] for o in objets[:2])
+
+    e1 = ajuster({"action": "affecter", "unites": deux, "code": "GO-02", "mode": "remplacer"})
+    L1 = lignes(e1)
+    verifier(abs(L1["GO-01"]["quantite"] - (L0["GO-01"]["quantite"] - surf2)) < 0.01, "GO-01 perd exactement les 2 voiles (%.2f m²)" % surf2)
+    verifier(abs(L1["GO-02"]["quantite"] - (L0.get("GO-02", {}).get("quantite", 0) + surf2)) < 0.01, "GO-02 les reçoit")
+    src = [x for x in L1["GO-02"]["sources"] if x.get("unites")]
+    verifier(src and sorted(src[0]["unites"]) == sorted(deux) and src[0]["origine"] == "manuel", "source « 2 objets » tracée (manuel)")
+    s1 = next(x for x in L1["GO-01"]["sources"] if x["g"] == voile["id"])
+    verifier(sorted(s1["sauf"]) == sorted(deux), "la visionneuse saura exclure ces 2 objets de GO-01")
+    verifier(L1["GO-02"]["confiance"] == "manuelle" and L1["GO-02"]["origine"] in ("manuel", "mixte"), "ligne marquée manuelle")
+
+    e2 = ajuster({"action": "retirer", "unites": deux, "code": "GO-02"})
+    verifier(len(e2["exclus"]) == 1 and e2["exclus"][0]["nombre"] == 2, "retirés de leur seule ligne : 2 objets exclus du chiffrage")
+    e3 = ajuster({"action": "annuler"}); e4 = ajuster({"action": "annuler"})
+    verifier(e4["total_ht"] == e0["total_ht"] and e4["historique"]["retablir"] == 2, "annuler × 2 : retour au total initial (%s €)" % e4["total_ht"])
+    e5 = ajuster({"action": "retablir"})
+    verifier(e5["total_ht"] == e1["total_ht"], "rétablir : %s €" % e5["total_ht"])
+
+    dallage = next(g for g in m["groupes"] if "Dallage" in g["type"])
+    e6 = ajuster({"action": "affecter", "groupes": [dallage["id"]], "code": "RS-01", "mode": "ajouter"})
+    L6 = lignes(e6)
+    verifier(dallage["id"] in L6["RS-01"]["groupes"] and dallage["id"] in L6["GO-06"]["groupes"], "type entier ajouté à une 2e ligne (GO-06 + RS-01)")
+    verifier(j("/api/etat").get("corrections") == 1, "correction retenue pour les prochains projets")
+
+    e7 = ajuster({"action": "quantite", "code": "GO-06", "valeur": "123,5"})
+    l7 = lignes(e7)["GO-06"]
+    verifier(l7["quantite"] == 123.5 and l7["qte_manuelle"] and l7["quantite_calculee"], "quantité forcée à 123,5 (calculée gardée : %s)" % l7["quantite_calculee"])
+    e8 = ajuster({"action": "supplement", "code": "GO-09", "valeur": 28, "libelle": "Fondations (CCTP 2.1)"})
+    verifier(lignes(e8)["GO-09"]["quantite"] == 28 and abs(e8["total_ht"] - e7["total_ht"] - 28 * 320) < 0.01, "ouvrage non modélisé saisi : +28 m³ (+8 960 €)")
+    e9 = ajuster({"action": "valider", "code": "PL-01"})
+    verifier(lignes(e9)["PL-01"]["confiance"] == "validée" and not lignes(e9)["PL-01"]["a_verifier"], "ligne validée")
+    e10 = ajuster({"action": "retirer", "code": "FP-02"})
+    sanit = next(g for g in m["groupes"] if g["type"] == "Sanitaires")
+    verifier("FP-02" not in lignes(e10) and sanit["id"] in lignes(e10)["RS-01"]["groupes"], "ligne FP-02 supprimée, les sanitaires gardent leur carrelage")
+    err = j("/api/ajuster", {"action": "affecter", "groupes": ["G99"], "code": "GO-01"})
+    verifier("erreur" in err, "groupe inconnu refusé")
+    err = j("/api/ajuster", {"action": "affecter", "groupes": [dallage["id"]], "code": "=HYPERLINK()"})
+    verifier("erreur" in err, "code de prix inconnu refusé")
+    verifier(len(e10["journal"]) >= 6, "journal des modifications (%d entrées)" % len(e10["journal"]))
+
+    r, chemin = excel_recalcule("ajuste.xlsx")
+    verifier(r["total_errors"] == 0 and abs(total_ht(chemin) - e10["total_ht"]) < 0.01, "Excel = estimation ajustée (%s €)" % e10["total_ht"])
+    from openpyxl import load_workbook
+    wb = load_workbook(chemin)
+    verifier("Modifications" in wb.sheetnames, "onglet « Modifications » dans l'Excel")
+
+    print("== Reprise des ajustements")
+    m2 = tache("/api/metre?demo=ifc")
+    verifier(m2.get("ajustements_repris"), "même maquette rechargée : ajustements retrouvés")
+    e11 = tache("/api/chiffrer", {"hauteur": 2.7})
+    verifier(e11["total_ht"] == e10["total_ht"], "même total après rechargement (%s €)" % e11["total_ht"])
+    autre = os.path.join(TMP, "maquette_mm.ifc")
+    subprocess.run([sys.executable, os.path.join(APP, "outils", "generer_maquette.py"), autre, "--mm"], check=True, stdout=subprocess.DEVNULL)
+    tache("/api/metre?nom=maquette_mm.ifc", brut=open(autre, "rb").read())
+    e12 = tache("/api/chiffrer", {"hauteur": 2.7})
+    verifier(e12.get("corrections_reprises") == 2 and dallage["id"] in lignes(e12)["RS-01"]["groupes"] and "FP-02" not in lignes(e12),
+             "autre projet : corrections reprises (dallage + sanitaires : %s)" % e12.get("corrections_reprises"))
+    e13 = ajuster({"action": "reinitialiser", "groupes": [dallage["id"]]})
+    verifier(dallage["id"] not in lignes(e13).get("RS-01", {"groupes": []})["groupes"] and j("/api/etat")["corrections"] == 1, "retour à l'IA : correction du dallage oubliée")
+
+    print("== Ajustements sur un plan DXF (blocs, locaux, calques)")
+    md = tache("/api/metre?demo=dxf")
+    ed = tache("/api/chiffrer", {"hauteur": 2.7})
+    porte = next(g for g in md["groupes"] if g["type"] == "P83")
+    objets = j("/api/unites?groupe=" + porte["id"])
+    verifier(len(objets) == 8 and all(o["id"].startswith("i") for o in objets), "8 portes P83 chiffrables une par une")
+    e1 = ajuster({"action": "affecter", "unites": [o["id"] for o in objets[:2]], "code": "MI-03", "mode": "remplacer"})
+    c0 = ed["affectations"][porte["id"]]["codes"][0]
+    verifier(lignes(e1)[c0]["quantite"] == lignes(ed)[c0]["quantite"] - 2 and lignes(e1)["MI-03"]["quantite"] == lignes(ed)["MI-03"]["quantite"] + 2,
+             "2 portes passées en coupe-feu : %s −2, MI-03 +2" % c0)
+    accueil = next(g for g in md["groupes"] if g["genre"] == "local" and g["nombre"] == 1)
+    uid = j("/api/unites?groupe=" + accueil["id"])[0]["id"]
+    e2 = ajuster({"action": "affecter", "unites": [uid], "code": "RS-02", "mode": "remplacer"})
+    verifier(e2["affectations"][accueil["id"]]["manuel"] and uid not in e2["unites_modifiees"], "tous les objets d'un groupe = choix sur le type entier")
+    calque = next(g for g in md["groupes"] if g["genre"] == "calque" and g["longueur"] and "CLOISON" in g["type"])
+    e3 = ajuster({"action": "nature", "groupes": [calque["id"]], "nature": "lineaire"})
+    l3 = next(l for l in e3["lignes"] if calque["id"] in l["groupes"])
+    src = next(x for x in l3["sources"] if x["g"] == calque["id"])
+    verifier(e3["natures"][calque["id"]] == "lineaire" and l3["unite"] == "m2" and src["quantite"] is None and l3["qte_manquante"],
+             "calque forcé en « linéaire » : plus de surface de mur déduite (quantité à saisir)")
+    e4 = ajuster({"action": "nature", "groupes": [calque["id"]], "nature": ""})
+    verifier(e4["total_ht"] == e2["total_ht"], "retour à la nature proposée par l'IA")
+
+
 SCENARIOS = {  # nom : (fonction, variables d'environnement du faux DeepSeek)
     "vis": (vis, {}), "base": (base, {}), "tronque": (tronque, {"TRONQUER": "5"}), "oublie": (oublie, {"OUBLIER": "1"}),
-    "repli": (repli, {"REFUSER_THINKING": "1"}), "gros": (gros, {}),
+    "repli": (repli, {"REFUSER_THINKING": "1"}), "ajust": (ajust, {}), "gros": (gros, {}),
 }
 
 
@@ -307,7 +410,8 @@ def executer(nom):
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     memoire = os.path.join(TMP, "memoire_%s.json" % nom)
     os.environ["CHIFFRAGE_MEMOIRE"] = memoire
-    env_app = dict(os.environ, DEEPSEEK_BASE_URL="http://127.0.0.1:%d" % PORT_FAUX, CHIFFRAGE_MEMOIRE=memoire)
+    env_app = dict(os.environ, DEEPSEEK_BASE_URL="http://127.0.0.1:%d" % PORT_FAUX, CHIFFRAGE_MEMOIRE=memoire,
+                   CHIFFRAGE_DONNEES=os.path.join(TMP, "donnees_%s" % nom))
     appli = subprocess.Popen([sys.executable, os.path.join(APP, "chiffrage_ia.py"), "--sans-navigateur", "--port", str(PORT)],
                              env=env_app, cwd=APP, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:

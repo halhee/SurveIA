@@ -110,6 +110,7 @@
     body.avec-vis #panneau-vis { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; height: 50vh; }
     body.avec-vis header, body.avec-vis main, body.avec-vis footer { margin-right: auto; margin-left: auto; max-width: 1080px; }
     body.avec-vis main { padding-bottom: 54vh; }
+    body.avec-vis:not(.vis-reduite) .barre-sel { bottom: calc(50vh + 16px); }
   }
   .vis-tete { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--trait); }
   .vis-tete b { font-size: 14px; }
@@ -149,6 +150,79 @@
   tr.choisie td { background: #fbe3cf !important; }
   @media (prefers-color-scheme: dark) { tr.choisie td { background: #4a2f16 !important; } }
   .lien-g { cursor: pointer; text-decoration: underline dotted; }
+  /* ----- Ajustements manuels ----- */
+  :root { --violet: #6b4fb0; --violet-fond: #efe9fa; }
+  @media (prefers-color-scheme: dark) { :root { --violet: #b9a2ee; --violet-fond: #2d2540; } }
+  .b-manuelle { background: var(--violet-fond); color: var(--violet); }
+  .b-validee { background: var(--vert); color: #fff; }
+  .chip { display: inline-flex; align-items: flex-start; gap: 2px; border: 1px solid var(--trait); border-radius: 8px; padding: 2px 2px 2px 8px;
+    font-size: 12px; line-height: 1.35; margin: 2px 4px 2px 0; background: var(--carte); color: var(--encre); max-width: 100%; }
+  #t4 { min-width: 600px; }
+  #t4 td .badge { margin-top: 4px; font-size: 11px; }
+  #t4 td.sources { min-width: 160px; max-width: 250px; }
+  .chip.o-manuel { border-color: var(--violet); background: var(--violet-fond); }
+  .chip.o-appris { border-color: var(--violet); border-style: dashed; }
+  .chip.sans-x { padding-right: 8px; }
+  .chip.code { font-weight: 700; cursor: pointer; }
+  .chip.code:hover { background: var(--bleu-clair); }
+  .chip .x { background: none; color: var(--doux); padding: 0 6px; font-size: 15px; line-height: 1.1; border-radius: 6px; font-weight: 400; }
+  .chip .x:hover { background: var(--rouge-fond); color: var(--rouge); }
+  .qte-man { color: var(--violet); font-weight: 700; }
+  tr.detail > td { background: var(--fond); padding: 12px 14px 14px; }
+  tr.ouverte td { background: var(--bleu-clair); }
+  .actions-ligne { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .actions-ligne button, .outils-ajust button, .barre-sel button, .mini { padding: 6px 11px; font-size: 13px; }
+  .actions-ligne input { width: 110px; padding: 6px 8px; }
+  .outils-ajust { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+  .outils-ajust .petit { margin-left: 4px; }
+  .barre-sel { position: sticky; bottom: 12px; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px;
+    background: var(--bleu); color: #fff; border-radius: 12px; padding: 10px 14px; box-shadow: 0 6px 24px rgba(27,36,48,.25); }
+  @media (prefers-color-scheme: dark) { .barre-sel { color: #0f1620; } }
+  .barre-sel #sel-texte { flex: 1; min-width: 200px; font-size: 14px; }
+  .barre-sel button.secondaire { color: inherit; border-color: rgba(255,255,255,.4); }
+  @media (prefers-color-scheme: dark) { .barre-sel button.secondaire { border-color: rgba(15,22,32,.35); } }
+  .barre-sel button.secondaire:hover { background: rgba(255,255,255,.14); }
+  tr.partielle td { background: #fdf1e6; }
+  @media (prefers-color-scheme: dark) { tr.partielle td { background: #33261a; } }
+  td.sel-case { width: 1%; }
+  .sous-objets { max-height: 260px; overflow: auto; font-size: 13px; }
+  .sous-objets label { display: flex; gap: 8px; font-weight: 400; margin: 0; padding: 2px 0; cursor: pointer; }
+  .nature { font-size: 12px; padding: 3px 6px; }
+  dialog { border: 1px solid var(--trait); border-radius: 12px; background: var(--carte); color: var(--encre); padding: 0; width: min(760px, 94vw);
+    max-height: 86vh; box-shadow: 0 12px 48px rgba(0,0,0,.25); }
+  dialog::backdrop { background: rgba(20,24,30,.35); }
+  .dlg { display: flex; flex-direction: column; max-height: 86vh; }
+  .dlg-tete { padding: 16px 18px 10px; border-bottom: 1px solid var(--trait); }
+  .dlg-tete h3 { margin: 0 0 6px; font-size: 16px; }
+  .dlg-liste { overflow: auto; padding: 4px 8px; flex: 1; }
+  .dlg-pied { padding: 12px 18px; border-top: 1px solid var(--trait); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; align-items: flex-end; }
+  .prix { display: grid; grid-template-columns: 64px 1fr auto auto; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 13.5px; }
+  .prix:hover, .prix.actif { background: var(--bleu-clair); }
+  .prix .lot-p { grid-column: 2; font-size: 11.5px; color: var(--doux); }
+  .prix .pu { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .compat { font-size: 11.5px; white-space: nowrap; }
+  .compat.ok { color: var(--vert); } .compat.ko { color: var(--ambre); }
+  .suggere { font-size: 11px; font-weight: 700; color: var(--accent); margin-left: 6px; }
+  .modes { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 14px; }
+  .modes label { display: inline-flex; gap: 6px; align-items: center; font-weight: 500; margin: 0; }
+  #journal summary { cursor: pointer; color: var(--bleu); font-weight: 600; font-size: 14px; }
+  #journal ol { margin: 8px 0 0; padding-left: 22px; font-size: 13px; max-height: 240px; overflow: auto; }
+  #journal li span { color: var(--doux); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--trait); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+  /* visionneuse : ligne consultée (bleu) et contrôle du chiffrage */
+  .v-svg path.foc { stroke: #2a7fea; stroke-opacity: 1; stroke-width: 2.5; }
+  .v-svg path.local.foc { fill: #2a7fea; fill-opacity: .16; }
+  .v-en-controle .v-svg path.e-ia { stroke: rgb(92,179,115); stroke-opacity: .95; stroke-width: 1.6; }
+  .v-en-controle .v-svg path.e-manuel { stroke: rgb(148,107,219); stroke-opacity: .95; stroke-width: 1.6; }
+  .v-en-controle .v-svg path.e-non { stroke: rgb(230,77,61); stroke-opacity: 1; stroke-width: 2; }
+  .v-en-controle .v-svg path.e-exclu { stroke-opacity: .25; }
+  .v-en-controle .v-svg path.local.e-ia { fill: rgb(92,179,115); fill-opacity: .1; }
+  .v-en-controle .v-svg path.local.e-manuel { fill: rgb(148,107,219); fill-opacity: .12; }
+  .v-en-controle .v-svg path.local.e-non { fill: rgb(230,77,61); fill-opacity: .14; }
+  .v-bloc-controle { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .v-legende { display: none; font-size: 11.5px; color: var(--doux); }
+  .v-en-controle .v-legende { display: inline; }
+  .v-pastille { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin: 0 3px 0 6px; vertical-align: -1px; }
 </style>
 </head>
 <body>
@@ -247,8 +321,20 @@
     <p class="aide">Quantités de l'étape 3 × prix unitaires de la bibliothèque. Les lignes marquées sont à relire par un économiste.</p>
     <div class="corps">
       <div class="kpis" id="k4"></div>
+      <div class="outils-ajust">
+        <button class="secondaire" id="btn-annuler" disabled title="Annuler la dernière modification (⌘Z / Ctrl+Z)">↶ Annuler</button>
+        <button class="secondaire" id="btn-retablir" disabled title="Rétablir (⇧⌘Z / Ctrl+Y)">↷ Rétablir</button>
+        <button class="secondaire" id="btn-ajout-ligne" title="Ajouter une quantité saisie à la main (ouvrage non modélisé, complément…)">+ Saisie manuelle</button>
+        <span class="petit" id="msg-ajust">Cliquez une ligne pour la modifier. Sélectionnez des éléments (métré ou visionneuse, <kbd>Maj</kbd>+clic pour en ajouter) pour les chiffrer vous-même.</span>
+      </div>
       <div class="tableau"><table id="t4"></table></div>
       <div id="nc"></div>
+      <details id="journal" class="cache" style="margin-top:12px"><summary>Historique des modifications</summary>
+        <ol id="journal-liste"></ol>
+        <p class="petit" style="margin:6px 0 0">Vos modifications sont enregistrées automatiquement pour ce fichier et retrouvées si vous le rechargez.
+          Les choix faits sur des types entiers sont aussi retenus pour vos prochains projets (<span id="nb-corrections">0</span> retenu(s)).
+          <a href="#" id="tout-reinitialiser">Revenir aux propositions de l'IA</a> · <a href="#" id="oublier-corrections">Oublier les choix retenus</a></p>
+      </details>
       <div class="ligne" style="margin-top:14px">
         <button id="btn-excel">Télécharger l'estimation Excel</button>
         <button class="secondaire" id="btn-rechiffrer">Relancer la correspondance</button>
@@ -272,7 +358,36 @@
       <div class="statut" id="s5"></div>
     </div>
   </section>
+  <div id="barre-sel" class="barre-sel cache" role="region" aria-label="Sélection">
+    <span id="sel-texte"></span>
+    <button id="sel-chiffrer" title="Choisir la ligne de prix de ces éléments">Chiffrer avec…</button>
+    <button class="secondaire" id="sel-exclure" title="Ne pas chiffrer ces éléments">Retirer du chiffrage</button>
+    <button class="secondaire" id="sel-ia" title="Annuler vos choix sur ces éléments et reprendre la proposition de l'IA">Revenir à l'IA</button>
+    <button class="secondaire" id="sel-vider" title="Vider la sélection (Échap)">✕</button>
+  </div>
 </main>
+<dialog id="dlg-prix">
+  <form method="dialog" class="dlg" id="dlg-form">
+    <div class="dlg-tete">
+      <h3 id="dlg-titre">Choisir une ligne de prix</h3>
+      <div class="petit" id="dlg-sous-titre"></div>
+      <input type="text" id="dlg-recherche" placeholder="Rechercher un code, une désignation, un lot…" style="width:100%;margin-top:10px" autocomplete="off">
+      <div class="modes" id="dlg-modes">
+        <label><input type="radio" name="mode" value="remplacer" checked> Remplacer leurs prix actuels</label>
+        <label><input type="radio" name="mode" value="ajouter"> Ajouter aux prix actuels (ex. : une finition en plus)</label>
+      </div>
+    </div>
+    <div class="dlg-liste" id="dlg-liste"></div>
+    <div class="dlg-pied">
+      <div id="dlg-saisie" class="cache ligne" style="flex:1">
+        <div><label for="dlg-qte">Quantité</label><input type="text" id="dlg-qte" inputmode="decimal" style="width:110px"></div>
+        <div style="flex:1;min-width:180px"><label for="dlg-libelle">Libellé</label><input type="text" id="dlg-libelle" style="width:100%"></div>
+      </div>
+      <button type="button" class="secondaire" id="dlg-annuler">Annuler</button>
+      <button type="button" id="dlg-ok" disabled>Valider</button>
+    </div>
+  </form>
+</dialog>
 <aside id="panneau-vis" aria-label="Visionneuse">
   <div class="vis-tete"><b>Visionneuse</b><span class="petit" id="vis-titre"></span>
     <button class="secondaire" id="vis-reduire" title="Réduire ou agrandir le panneau">Réduire</button></div>
@@ -373,7 +488,9 @@ async function lancerMetre(chemin, corps, libelle) {
     const m = await suivreTache(id, stop.message);
     const u = m.source === "dxf" ? `, unités : ${esc(m.unite_longueur)} (${esc(m.origine_unite)})` : "";
     statut("s2", `${m.source === "dxf" ? "Plan" : "Maquette"} lu${m.source === "dxf" ? "" : "e"} : <b>${esc(m.fichier)}</b> (${esc(m.schema)}, ${m.nb_entites.toLocaleString("fr-FR")} entités${u}).`, "ok");
-    faite("e2"); PAGE.metre = m; PAGE.estimation = null; afficherMetre(m); deverrouiller("e3");
+    if (m.ajustements_repris) statut("s2", $("s2").innerHTML + `<br>${m.ajustements_repris.nb} modification(s) manuelle(s) retrouvée(s) pour ce fichier` +
+      (m.ajustements_repris.date ? ` (${esc(m.ajustements_repris.date)})` : "") + " : elles seront appliquées au chiffrage.", "ok");
+    faite("e2"); PAGE.metre = m; viderSelection(false); LIGNE = null; INFOS_UNITES = {}; oublierEstimation(); deverrouiller("e3");
     ouvrirVisionneuse(m);
     $("e3").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) { statut("s2", esc(err.message), "erreur"); }
@@ -395,20 +512,20 @@ async function chargerCctp(chemin, corps) {
   const stop = attente("s2", "Lecture du CCTP…");
   try {
     afficherCctp(await api(chemin, { method: "POST", body: corps }));
-    statut("s2", "CCTP chargé : il sera pris en compte au prochain chiffrage.", "ok"); verrouiller("e4", "e5");
+    statut("s2", "CCTP chargé : il sera pris en compte au prochain chiffrage.", "ok"); verrouiller("e4", "e5"); oublierEstimation();
   } catch (err) { statut("s2", esc(err.message), "erreur"); }
   finally { stop(); }
 }
 $("btn-cctp-demo").onclick = () => chargerCctp("/api/cctp?demo=1", "");
 $("cctp").onchange = (e) => { const f = e.target.files[0]; if (f) chargerCctp("/api/cctp?nom=" + encodeURIComponent(f.name), f); e.target.value = ""; };
-$("btn-cctp-retirer").onclick = async () => { await api("/api/cctp_retirer", { method: "POST" }); afficherCctp(null); verrouiller("e4", "e5"); statut("s2", "CCTP retiré."); };
+$("btn-cctp-retirer").onclick = async () => { await api("/api/cctp_retirer", { method: "POST" }); afficherCctp(null); verrouiller("e4", "e5"); oublierEstimation(); statut("s2", "CCTP retiré."); };
 $("unite").onchange = () => statut("s2", "Unités modifiées : rechargez le plan pour recalculer le métré.");
 $("csv").onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return;
   try {
     const d = await api("/api/bibliotheque?nom=" + encodeURIComponent(f.name), { method: "POST", body: f });
     $("biblio-nom").textContent = d.nom; $("biblio-nb").textContent = d.nb;
-    statut("s2", "Bibliothèque de prix remplacée.", "ok"); verrouiller("e4", "e5");
+    statut("s2", "Bibliothèque de prix remplacée.", "ok"); verrouiller("e4", "e5"); oublierEstimation();
   } catch (err) { statut("s2", esc(err.message), "erreur"); }
   e.target.value = "";
 };
@@ -421,9 +538,10 @@ function afficherMetre(m) {
     ...(m.nb_locaux ? [[m.nb_locaux, "locaux (IfcSpace)"]] : []),
     [nb(g.filter((x) => x.classe === "IfcWall").reduce((s, x) => s + (x.surface || 0), 0), 0) + " m²", "de murs (surface nette)"],
   ].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
-  $("t3").innerHTML = `<tr><th>Groupe</th><th>Catégorie</th><th>Type</th><th>Matériau</th><th class="n">Nb</th><th class="n">Surface m²</th><th class="n">Volume m³</th><th class="n">Longueur m</th></tr>` +
-    g.map((x) => `<tr class="cliquable" data-g="${x.id}" title="Localiser dans la visionneuse"><td class="petit">${x.id}</td><td>${esc(x.categorie)}</td><td><b>${esc(x.type)}</b></td><td class="petit">${esc(x.materiau) || "—"}</td>
-      <td class="n">${x.nombre}</td><td class="n">${nb(x.surface)}</td><td class="n">${nb(x.volume, 3)}</td><td class="n">${nb(x.longueur)}</td></tr>`).join("");
+  $("t3").innerHTML = `<tr><th>Groupe</th><th>Catégorie</th><th>Type</th><th>Matériau</th><th class="n">Nb</th><th class="n">Surface m²</th><th class="n">Volume m³</th><th class="n">Longueur m</th><th>Chiffré par</th></tr>` +
+    g.map((x) => `<tr class="cliquable" data-g="${x.id}" title="Clic : sélectionner et localiser · Maj+clic : ajouter à la sélection"><td class="petit">${x.id}</td><td>${esc(x.categorie)}</td><td><b>${esc(x.type)}</b></td><td class="petit">${esc(x.materiau) || "—"}</td>
+      <td class="n">${x.nombre}</td><td class="n">${nb(x.surface)}</td><td class="n">${nb(x.volume, 3)}</td><td class="n">${nb(x.longueur)}</td><td class="chiffre-par" data-g="${x.id}"></td></tr>`).join("");
+  majColonneChiffrage();
 }
 
 function afficherMetrePlan(m) {
@@ -434,9 +552,53 @@ function afficherMetrePlan(m) {
     [nb(n("local").reduce((s, x) => s + (x.surface || 0), 0), 0) + " m²", "de surface de locaux"],
   ].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
   const nom = { calque: "Calque", bloc: "Bloc", local: "Locaux" };
-  $("t3").innerHTML = `<tr><th>Groupe</th><th>Genre</th><th>Nom</th><th>Détail</th><th class="n">Nb</th><th class="n">Surface m²</th><th class="n">Longueur dessinée m</th></tr>` +
-    g.map((x) => `<tr class="cliquable" data-g="${x.id}" title="Localiser dans la visionneuse"><td class="petit">${x.id}</td><td>${nom[x.genre]}</td><td><b>${esc(x.type)}</b></td><td class="petit">${esc(x.detail)}</td>
-      <td class="n">${x.genre === "calque" ? (x.nombre || "—") : x.nombre}</td><td class="n">${nb(x.surface)}</td><td class="n">${nb(x.longueur)}</td></tr>`).join("");
+  $("t3").innerHTML = `<tr><th>Groupe</th><th>Genre</th><th>Nom</th><th>Détail</th><th class="n">Nb</th><th class="n">Surface m²</th><th class="n">Longueur dessinée m</th><th>Chiffré par</th></tr>` +
+    g.map((x) => `<tr class="cliquable" data-g="${x.id}" title="Clic : sélectionner et localiser · Maj+clic : ajouter à la sélection"><td class="petit">${x.id}</td><td>${nom[x.genre]}</td><td><b>${esc(x.type)}</b></td><td class="petit">${esc(x.detail)}</td>
+      <td class="n">${x.genre === "calque" ? (x.nombre || "—") : x.nombre}</td><td class="n">${nb(x.surface)}</td><td class="n">${nb(x.longueur)}</td><td class="chiffre-par" data-g="${x.id}"></td></tr>`).join("");
+  majColonneChiffrage();
+}
+
+// Colonne « Chiffré par » du métré : lignes de prix de chaque groupe, modifiables
+const NATURES = { "": "nature proposée par l'IA", mur: "mur", surface_sol: "surface de sol", lineaire: "linéaire",
+  element_vertical: "élément vertical", comptage: "comptage", ignorer: "hors chiffrage" };
+function majColonneChiffrage() {
+  const e = PAGE.estimation;
+  document.querySelectorAll("#t3 td.chiffre-par").forEach((td) => {
+    if (!e) { td.innerHTML = `<span class="petit">—</span>`; return; }
+    const gid = td.dataset.g, a = e.affectations[gid] || { codes: [], reste: 1, codes_objets: [] }, g = groupe(gid);
+    const origine = a.appris ? "o-appris" : a.manuel ? "o-manuel" : "";
+    const exclu = e.exclus.some((n) => n.groupe === gid && !n.unites), ignore = e.ignores.some((n) => n.groupe === gid);
+    let h = "";
+    if (a.reste > 0) {
+      h = a.codes.length
+        ? a.codes.map((c) => `<span class="chip ${origine}"><span class="code-lien" data-code="${esc(c)}" title="Voir la ligne ${esc(c)}"><b>${esc(c)}</b></span><button type="button" class="x" data-retirer-groupe="${esc(gid)}" data-code="${esc(c)}" title="Retirer ce type de la ligne ${esc(c)}">×</button></span>`).join("")
+        : `<span class="badge ${exclu || ignore ? "" : "b-non"}">${exclu ? "retiré" : ignore ? "hors chiffrage" : "non chiffré"}</span>`;
+      if (a.manuel || a.appris) h += `<span class="petit" title="${a.appris ? "Choix repris de vos projets précédents" : "Choix manuel"}">${a.appris ? " ↺ repris" : " ✎"}</span>`;
+    }
+    if (a.objets_modifies) {
+      h += `<div class="petit">${a.reste > 0 ? a.objets_modifies + " objet(s) à part :" : "chiffré objet par objet :"}</div>` +
+        (a.codes_objets.length ? a.codes_objets.map((c) => `<span class="chip o-manuel sans-x code-lien" data-code="${esc(c)}" title="Voir la ligne ${esc(c)}"><b>${esc(c)}</b></span>`).join("")
+          : `<span class="badge">retiré</span>`);
+    }
+    if (g && g.genre === "calque") {
+      h += `<div><select class="nature" data-nature="${esc(gid)}" title="Ce que représente le calque : sert au calcul de la quantité">` +
+        Object.entries(NATURES).map(([k, v]) => `<option value="${k}">${esc(k === "" ? "auto : " + (a.nature_ia ? NATURES[a.nature_ia] : "aucune") : v)}</option>`).join("") + `</select></div>`;
+    }
+    td.innerHTML = h;
+  });
+  // nature : l'option « auto » est choisie tant que l'utilisateur n'a rien forcé
+  document.querySelectorAll("#t3 select.nature").forEach((sel) => {
+    const a = e.affectations[sel.dataset.nature];
+    sel.value = a.nature !== a.nature_ia ? a.nature : "";
+  });
+}
+
+// L'estimation n'est plus à jour (autre fichier, CCTP ou bibliothèque) : vos modifications sont gardées côté serveur
+function oublierEstimation() {
+  PAGE.estimation = null; LIGNE = null;
+  if (PAGE.metre) afficherMetre(PAGE.metre);
+  Visionneuse.colorier(null);
+  majSelection(false);
 }
 
 // ---------- Étape 4 : chiffrage ----------
@@ -450,14 +612,18 @@ async function chiffrer(forcer = false) {
     if (est.depuis_memoire) details.push(`${est.depuis_memoire}/${est.nb_groupes} groupe(s) repris de la mémoire`);
     if (est.decoupages) details.push(`${est.decoupages} réponse(s) trop longue(s) redécoupée(s) automatiquement`);
     if (est.relances) details.push(`${est.relances} groupe(s) oublié(s) par l'IA redemandé(s)`);
+    if (est.corrections_reprises) details.push(`${est.corrections_reprises} type(s) chiffré(s) comme dans vos projets précédents`);
+    if (est.nb_ajustements && !est.corrections_reprises) details.push(`vos ${est.nb_ajustements} modification(s) sur ce fichier sont appliquées`);
     statut("s3", "Correspondance terminée" + (details.length ? " — " + details.join(", ") : "") + ".", "ok"); faite("e3");
+    BIBLIO = await api("/api/bibliotheque/liste").catch(() => []);
+    LIGNE = null;
     afficherEstimation(est); deverrouiller("e4", "e5"); faite("e4");
     $("e4").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) { statut("s3", esc(err.message), "erreur"); }
   finally { stop(); $("btn-chiffrer").disabled = $("btn-rechiffrer").disabled = false; }
 }
 $("btn-chiffrer").onclick = () => chiffrer(false);
-// « Relancer » ignore la mémoire et redemande tout à DeepSeek
+// « Relancer » ignore la mémoire et redemande tout à DeepSeek (vos modifications sont conservées)
 $("btn-rechiffrer").onclick = () => chiffrer(true);
 $("vider-memoire").onclick = async (ev) => {
   ev.preventDefault();
@@ -465,46 +631,237 @@ $("vider-memoire").onclick = async (ev) => {
   $("info-memoire").textContent = "Mémoire vidée : la prochaine correspondance sera entièrement redemandée à DeepSeek.";
 };
 
+const CLASSE_CONF = { haute: "b-haute", moyenne: "b-moyenne", faible: "b-faible", manuelle: "b-manuelle", "validée": "b-validee" };
+const TITRE_CONF = { haute: "Confiance haute de l'IA", moyenne: "Confiance moyenne de l'IA : à relire", faible: "Confiance faible de l'IA : à vérifier",
+  manuelle: "Choisie à la main", "validée": "Relue et validée" };
+
+function puceSource(l, s) {
+  const cls = s.origine === "manuel" ? "o-manuel" : s.origine === "appris" ? "o-appris" : "";
+  const titre = s.origine === "manuel" ? "Ajouté à la main" : s.origine === "appris" ? "Choix repris de vos projets précédents" : "Proposé par l'IA";
+  const q = s.quantite === null || s.quantite === undefined ? "" : " · " + nb(s.quantite) + " " + l.unite;
+  const cible = s.supplement ? `data-supplement="${esc(s.supplement)}"` :
+    `data-retirer='${esc(JSON.stringify(s.unites ? { unites: s.unites } : { groupes: [s.g] }))}'`;
+  return `<span class="chip ${cls}" title="${titre}${q}">${esc(s.libelle)}<button type="button" class="x" ${cible} data-code="${esc(l.code)}" title="Retirer de cette ligne">×</button></span>`;
+}
+
 function afficherEstimation(e) {
   PAGE.estimation = e;
   const aVerifier = e.lignes.filter((l) => l.a_verifier).length;
   $("k4").innerHTML = [
     [eur.format(e.total_ht), "Total HT", "fort"], [eur.format(e.total_ht * (1 + e.tva)), "Total TTC (TVA " + Math.round(e.tva * 100) + " %)"],
     [e.lignes.length, "lignes chiffrées"], [aVerifier + e.non_chiffres.length, "points à vérifier"],
-    ...(e.cctp ? [[(e.absents || []).length, "ouvrages du CCTP non modélisés"]] : []),
+    ...(e.nb_ajustements ? [[e.nb_ajustements, "modification(s) manuelle(s)"]] : []),
+    ...(e.cctp ? [[(e.absents || []).filter((a) => !a.chiffre).length, "ouvrages du CCTP non modélisés"]] : []),
     [e.duree + " s", (e.appels ? e.appels + " appel(s) · " + (e.jetons_entree + e.jetons_sortie).toLocaleString("fr-FR") + " jetons" +
       (e.jetons_cache ? " (" + Math.round(100 * e.jetons_cache / Math.max(1, e.jetons_entree)) + " % de l'entrée en cache)" : "")
       : "aucun appel : tout vient de la mémoire") + " · " + esc(e.modele)],
   ].map(([v, l, c]) => `<div class="kpi ${c || ""}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
   const lots = {};
   e.lignes.forEach((l) => (lots[l.lot] ||= []).push(l));
-  let h = `<tr><th>Code</th><th>Désignation</th><th>Éléments sources</th><th class="n">Quantité</th><th>Unité</th><th class="n">PU HT</th><th class="n">Total HT</th><th>Confiance IA</th></tr>`;
+  if (LIGNE && !e.lignes.some((l) => l.code === LIGNE)) LIGNE = null;
+  let h = `<tr><th>Code</th><th>Désignation</th><th>Éléments sources</th><th class="n">Quantité</th><th class="n">PU HT</th><th class="n">Total HT</th></tr>`;
   for (const [lot, lignes] of Object.entries(lots).sort()) {
-    h += `<tr class="lot"><td colspan="8">${esc(lot)}</td></tr>`;
+    h += `<tr class="lot"><td colspan="6">${esc(lot)}</td></tr>`;
     for (const l of lignes) {
-      h += `<tr class="cliquable" data-g="${esc(l.groupes.join(","))}" data-code="${esc(l.code)}" title="Localiser dans la visionneuse"><td class="petit" style="white-space:nowrap">${esc(l.code)}</td><td>${esc(l.designation)}<div class="petit">${esc(l.justification)}</div>
+      const qte = l.qte_manquante && !l.quantite ? '<span class="badge b-non">à saisir</span>'
+        : l.qte_manuelle ? `<span class="qte-man" title="Quantité saisie à la main${l.quantite_calculee !== null && l.quantite_calculee !== undefined ? " (métré : " + nb(l.quantite_calculee) + ")" : ""}">✎ ${nb(l.quantite)}</span>` : nb(l.quantite);
+      h += `<tr class="cliquable${LIGNE === l.code ? " ouverte" : ""}" data-code="${esc(l.code)}" title="Clic : localiser et modifier cette ligne"><td class="petit" style="white-space:nowrap">${esc(l.code)}<br><span class="badge ${CLASSE_CONF[l.confiance] || ""}" title="${esc(TITRE_CONF[l.confiance] || "")}">${esc(l.confiance)}</span></td><td>${esc(l.designation)}<div class="petit">${esc(l.justification)}</div>
         ${l.remarque ? `<div class="alerte">⚠ ${esc(l.remarque)}</div>` : ""}
         ${(l.articles || []).map((a) => `<div class="art">CCTP art. ${esc(a.numero)} : « ${esc(a.extrait)} »</div>`).join("")}
         ${(l.ecarts || []).map((x) => `<div class="ecart">⚠ Écart avec le CCTP : ${esc(x)}</div>`).join("")}
         ${l.hypothese ? `<div class="hypo">Calcul : ${esc(l.hypothese)}</div>` : ""}</td>
-        <td class="petit">${l.elements.map(esc).join("<br>")}</td>
-        <td class="n">${l.qte_manquante && !l.quantite ? '<span class="badge b-non">à saisir</span>' : nb(l.quantite)}</td><td>${esc(l.unite)}</td>
-        <td class="n">${eur.format(l.pu)}</td><td class="n"><b>${eur.format(l.total)}</b></td>
-        <td><span class="badge b-${l.confiance}">${l.confiance}</span></td></tr>`;
+        <td class="sources">${l.sources.map((s) => puceSource(l, s)).join("") || '<span class="petit">aucun élément : quantité saisie</span>'}</td>
+        <td class="n">${qte} <span class="petit">${esc(l.unite)}</span></td>
+        <td class="n">${eur.format(l.pu)}</td><td class="n"><b>${eur.format(l.total)}</b></td></tr>`;
+      if (LIGNE === l.code) h += detailLigne(l);
     }
-    h += `<tr class="st"><td colspan="6" class="n">Sous-total ${esc(lot)}</td><td class="n">${eur.format(lignes.reduce((s, l) => s + l.total, 0))}</td><td></td></tr>`;
+    h += `<tr class="st"><td colspan="5" class="n">Sous-total ${esc(lot)}</td><td class="n">${eur.format(lignes.reduce((s, l) => s + l.total, 0))}</td></tr>`;
   }
   $("t4").innerHTML = h;
-  const absents = (e.absents || []).length ? `<div class="note orange"><b>Décrits au CCTP, absents ${e.source === "dxf" ? "du plan" : "de la maquette"} — à compléter :</b> <span class="petit">dans l'Excel, ceux qui ont une ligne de prix sont prêts à chiffrer (quantité à saisir sur fond jaune, le total se met à jour).</span><br>` +
-    e.absents.map((a) => `${a.article ? "<b>Art. " + esc(a.article) + "</b> " : ""}${esc(a.ouvrage)}` +
+
+  const cible = (n) => esc(JSON.stringify(n.unites ? { unites: n.unites, g: n.groupe } : { groupes: [n.groupe] }));
+  const absents = (e.absents || []).length ? `<div class="note orange"><b>Décrits au CCTP, absents ${e.source === "dxf" ? "du plan" : "de la maquette"} — à compléter :</b> <span class="petit">« Chiffrer » ajoute la quantité que vous saisissez ; sinon, dans l'Excel, ceux qui ont une ligne de prix sont prêts à chiffrer (fond jaune).</span><br>` +
+    e.absents.map((a, i) => `${a.article ? "<b>Art. " + esc(a.article) + "</b> " : ""}${esc(a.ouvrage)}` +
       (a.code ? ` <span class="petit">→ ligne ${esc(a.code)} (${esc(a.unite)})</span>` : ` <span class="petit">→ pas de ligne dans la bibliothèque</span>`) +
-      (a.info_quantite ? ` <span class="petit">· CCTP : ${esc(a.info_quantite)}</span>` : "")).join("<br>") + `</div>` : "";
+      (a.info_quantite ? ` <span class="petit">· CCTP : ${esc(a.info_quantite)}</span>` : "") +
+      (a.chiffre ? ` <span class="badge b-haute">✓ chiffré</span>` : ` <button type="button" class="secondaire mini" data-absent="${i}">Chiffrer…</button>`)).join("<br>") + `</div>` : "";
   $("nc").innerHTML = absents + (e.non_chiffres.length ? `<div class="note" style="background:var(--rouge-fond)"><b>Non chiffré, à traiter :</b><br>` +
-    e.non_chiffres.map((n) => `<span class="lien-g" data-g="${esc(n.groupe)}" title="Localiser">${esc(n.element)}</span> — <span class="petit">${esc(n.raison)}</span>`).join("<br>") + `</div>` : "") +
+    e.non_chiffres.map((n) => `<span class="lien-g" data-g="${esc(n.groupe)}" title="Localiser">${esc(n.element)}</span> — <span class="petit">${esc(n.raison)}</span> <button type="button" class="secondaire mini" data-chiffrer='${cible(n)}'>Chiffrer…</button>`).join("<br>") + `</div>` : "") +
+    ((e.exclus || []).length ? `<div class="note"><b>Retirés du chiffrage à la main :</b><br>` +
+    e.exclus.map((n) => `<span class="lien-g" data-g="${esc(n.groupe)}" title="Localiser">${esc(n.element)}</span> <button type="button" class="secondaire mini" data-reintegrer='${cible(n)}'>Réintégrer</button>`).join("<br>") + `</div>` : "") +
     ((e.ignores || []).length ? `<div class="note"><b>Écartés par l'IA (hors chiffrage) :</b><br>` +
-    e.ignores.map((n) => `<span class="lien-g" data-g="${esc(n.groupe)}" title="Localiser">${esc(n.element)}</span> — <span class="petit">${esc(n.raison)}</span>`).join("<br>") + `</div>` : "");
+    e.ignores.map((n) => `<span class="lien-g" data-g="${esc(n.groupe)}" title="Localiser">${esc(n.element)}</span> — <span class="petit">${esc(n.raison)}</span> <button type="button" class="secondaire mini" data-chiffrer='${cible(n)}'>Chiffrer quand même…</button>`).join("<br>") + `</div>` : "");
+
+  // historique
+  const j = e.journal || [];
+  $("journal").classList.toggle("cache", !j.length);
+  $("journal").querySelector("summary").textContent = `Historique des modifications (${j.length})`;
+  $("journal-liste").innerHTML = j.slice().reverse().map((x) => `<li><span>${esc(x.heure)}</span>${esc(x.texte)}</li>`).join("");
+  api("/api/etat").then((d) => { $("nb-corrections").textContent = d.corrections; }).catch(() => {});
+  majHistorique(e.historique);
+  majColonneChiffrage();
+  Visionneuse.colorier(etatsControle(e));
+  majSelection(false);
 }
-$("btn-excel").onclick = () => { window.location = "/api/excel"; };
+
+function majHistorique(h) {
+  h = h || { annuler: 0, retablir: 0 };
+  $("btn-annuler").disabled = !h.annuler; $("btn-retablir").disabled = !h.retablir;
+  $("btn-annuler").title = h.annuler ? "Annuler : " + h.dernier + " (⌘Z / Ctrl+Z)" : "Rien à annuler";
+  $("btn-retablir").title = h.retablir ? "Rétablir : " + h.suivant + " (⇧⌘Z / Ctrl+Y)" : "Rien à rétablir";
+}
+
+// État de chaque groupe et objet pour le mode « Contrôle » de la visionneuse
+function etatsControle(e) {
+  const groupes = {}, unites = {};
+  for (const [g, a] of Object.entries(e.affectations || {})) groupes[g] = a.codes.length ? (a.manuel || a.appris ? "manuel" : "ia") : "non";
+  for (const n of e.ignores || []) groupes[n.groupe] = "exclu";
+  for (const n of e.exclus || []) if (!n.unites) groupes[n.groupe] = "exclu";
+  for (const [u, c] of Object.entries(e.unites_modifiees || {})) unites[u] = c.length ? "manuel" : "exclu";
+  return { groupes, unites };
+}
+
+// Détail d'une ligne ouverte : actions de modification
+function detailLigne(l) {
+  const n = tailleSelection();
+  return `<tr class="detail"><td colspan="6"><div class="actions-ligne">
+    <button type="button" data-action="ajouter-sel" ${n ? "" : "disabled"} title="Chiffrer aussi les éléments sélectionnés avec cette ligne (en plus de leurs prix actuels)">+ Ajouter la sélection${n ? " (" + esc(texteSelection(true)) + ")" : ""}</button>
+    <button type="button" class="secondaire" data-action="deplacer-sel" ${n ? "" : "disabled"} title="Les éléments sélectionnés seront chiffrés uniquement avec cette ligne">Déplacer la sélection ici</button>
+    <button type="button" class="secondaire" data-action="selectionner" title="Sélectionner les éléments de cette ligne (pour les déplacer vers une autre)">Sélectionner ses éléments</button>
+    <span style="flex:1"></span>
+    <label for="qte-ligne" style="margin:0;font-weight:500">Quantité</label>
+    <input type="text" id="qte-ligne" inputmode="decimal" value="${l.qte_manquante && !l.quantite ? "" : String(l.quantite).replace(".", ",")}">
+    <button type="button" class="secondaire" data-action="quantite">Fixer</button>
+    ${l.qte_manuelle ? `<button type="button" class="secondaire" data-action="recalculer" title="Revenir à la quantité du métré${l.quantite_calculee !== null && l.quantite_calculee !== undefined ? " : " + nb(l.quantite_calculee) : ""}">Recalculer</button>` : ""}
+    <button type="button" class="secondaire" data-action="valider">${l.confiance === "validée" ? "Retirer la validation" : "✓ Valider"}</button>
+    <button type="button" class="secondaire" data-action="supprimer" title="Retirer cette ligne de prix de tous ses éléments">Supprimer la ligne</button>
+  </div>${l.origine !== "ia" ? `<p class="petit" style="margin:8px 0 0">${l.origine === "manuel" ? "Ligne entièrement choisie à la main." : "Ligne en partie choisie à la main (éléments en violet)."}</p>` : ""}</td></tr>`;
+}
+
+// ---------- Ajustements : appel au serveur et rafraîchissement ----------
+async function ajuster(corps, messageOk) {
+  try {
+    const d = await api("/api/ajuster", { method: "POST", body: JSON.stringify(corps) });
+    afficherEstimation(d.estimation);
+    $("msg-ajust").innerHTML = `<span style="color:var(--vert)">✓</span> ${esc(messageOk || d.message)}`;
+    return d;
+  } catch (err) {
+    $("msg-ajust").innerHTML = `<span style="color:var(--rouge)">${esc(err.message)}</span>`;
+    return null;
+  }
+}
+$("btn-annuler").onclick = () => ajuster({ action: "annuler" });
+$("btn-retablir").onclick = () => ajuster({ action: "retablir" });
+$("tout-reinitialiser").onclick = (ev) => { ev.preventDefault(); ajuster({ action: "reinitialiser" }); };
+$("oublier-corrections").onclick = async (ev) => {
+  ev.preventDefault();
+  await api("/api/corrections_vider", { method: "POST" });
+  $("nb-corrections").textContent = "0";
+  $("msg-ajust").textContent = "Les choix retenus ne seront plus repris dans vos prochains projets (ce chiffrage n'est pas modifié).";
+};
+$("btn-ajout-ligne").onclick = () => ouvrirChoixPrix({ genre: "saisie" });
+document.addEventListener("keydown", (ev) => {
+  if (ev.target.closest("input, textarea, select, dialog")) return;
+  const mod = ev.metaKey || ev.ctrlKey;
+  if (mod && ev.key.toLowerCase() === "z" && PAGE.estimation) {
+    ev.preventDefault();
+    if (ev.shiftKey) { if (!$("btn-retablir").disabled) $("btn-retablir").click(); }
+    else if (!$("btn-annuler").disabled) $("btn-annuler").click();
+  } else if (mod && ev.key.toLowerCase() === "y" && PAGE.estimation && !$("btn-retablir").disabled) {
+    ev.preventDefault(); $("btn-retablir").click();
+  } else if (ev.key === "Escape") {
+    viderSelection(); LIGNE = null;
+    if (PAGE.estimation) afficherEstimation(PAGE.estimation);
+  }
+});
+
+// Clics dans le tableau d'estimation
+$("t4").addEventListener("click", (ev) => {
+  const x = ev.target.closest("button.x");
+  if (x) {
+    ev.stopPropagation();
+    if (x.dataset.supplement) return ajuster({ action: "supprimer_supplement", id: x.dataset.supplement });
+    return ajuster({ action: "retirer", code: x.dataset.code, ...JSON.parse(x.dataset.retirer) });
+  }
+  const b = ev.target.closest("tr.detail button");
+  if (b) {
+    const l = PAGE.estimation.lignes.find((y) => y.code === LIGNE);
+    if (!l) return;
+    const a = b.dataset.action;
+    if (a === "ajouter-sel" || a === "deplacer-sel")
+      return ajuster({ action: "affecter", code: l.code, mode: a === "ajouter-sel" ? "ajouter" : "remplacer", ...cibleSelection() }).then((d) => d && viderSelection());
+    if (a === "selectionner") return selectionnerSources(l);
+    if (a === "quantite") return ajuster({ action: "quantite", code: l.code, valeur: $("qte-ligne").value });
+    if (a === "recalculer") return ajuster({ action: "quantite", code: l.code, valeur: null });
+    if (a === "valider") return ajuster({ action: "valider", code: l.code, etat: l.confiance !== "validée" });
+    if (a === "supprimer") return ajuster({ action: "retirer", code: l.code });
+    return;
+  }
+  if (ev.target.closest("tr.detail")) return;
+  const tr = ev.target.closest("tr[data-code]");
+  if (tr) ouvrirLigne(tr.dataset.code, false, true);
+});
+$("t4").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && ev.target.id === "qte-ligne") ev.target.closest("tr").querySelector("[data-action=quantite]").click(); });
+
+function ouvrirLigne(code, defiler = false, basculer = false) {
+  LIGNE = basculer && LIGNE === code ? null : code;
+  afficherEstimation(PAGE.estimation);
+  const l = PAGE.estimation.lignes.find((y) => y.code === code);
+  if (LIGNE && l) {
+    const r = Visionneuse.mode() ? Visionneuse.afficherChoix(partiesVision(), "focus") : { nbFocus: 0 };
+    ficheLigne(l, r.nbFocus);
+    if (defiler) document.querySelector(`#t4 tr[data-code="${CSS.escape(code)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  } else majSelection(false);
+}
+
+// Les éléments d'une ligne deviennent la sélection (ex. : pour les déplacer vers une autre ligne)
+function selectionnerSources(l) {
+  viderSelection(false);
+  for (const s of l.sources) {
+    if (s.supplement) continue;
+    if (s.unites) s.unites.forEach((u) => SEL.unites.set(u, s.g));
+    else if (s.sauf && s.sauf.length && Visionneuse.mode()) {
+      const sauf = new Set(s.sauf);
+      Visionneuse.unitesOu({ groupes: [s.g] }).filter((u) => !sauf.has(u)).forEach((u) => SEL.unites.set(u, s.g));
+    } else SEL.groupes.add(s.g);
+  }
+  LIGNE = null;
+  afficherEstimation(PAGE.estimation);
+  majSelection(true);
+}
+
+// Clics dans les listes sous le tableau (absents, non chiffrés, retirés)
+$("nc").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button");
+  if (b && b.dataset.absent !== undefined) {
+    const a = PAGE.estimation.absents[+b.dataset.absent];
+    return ouvrirChoixPrix({ genre: "saisie", code: a.code, libelle: (a.article ? "CCTP art. " + a.article + " : " : "") + a.ouvrage, info: a.info_quantite });
+  }
+  if (b && b.dataset.chiffrer) { remplacerSelection(JSON.parse(b.dataset.chiffrer)); return ouvrirChoixPrix({ genre: "affecter" }); }
+  if (b && b.dataset.reintegrer) return ajuster({ action: "reinitialiser", ...JSON.parse(b.dataset.reintegrer) });
+  const s = ev.target.closest(".lien-g");
+  if (s) { remplacerSelection({ groupes: [s.dataset.g] }); majSelection(true); }
+});
+
+// Clics dans le métré : sélection (Maj / ⌘ : ajout), puces de prix, nature des calques
+$("t3").addEventListener("click", (ev) => {
+  const x = ev.target.closest("button.x");
+  if (x) { ev.stopPropagation(); return ajuster({ action: "retirer", code: x.dataset.code, groupes: [x.dataset.retirerGroupe] }); }
+  const c = ev.target.closest(".code-lien");
+  if (c) { ev.stopPropagation(); return ouvrirLigne(c.dataset.code, true); }
+  if (ev.target.closest("select")) return;
+  const tr = ev.target.closest("tr[data-g]");
+  if (!tr) return;
+  const gid = tr.dataset.g;
+  if (ev.shiftKey || ev.metaKey || ev.ctrlKey) {
+    if (SEL.groupes.has(gid)) SEL.groupes.delete(gid); else { SEL.groupes.add(gid); retirerObjetsDuGroupe(gid); }
+  } else remplacerSelection({ groupes: [gid] });
+  majSelection(true);  // la ligne ouverte reste ouverte : « + Ajouter la sélection » y ajoute ces éléments
+});
+$("t3").addEventListener("change", (ev) => {
+  const sel = ev.target.closest("select.nature");
+  if (sel) ajuster({ action: "nature", groupes: [sel.dataset.nature], nature: sel.value });
+});
 
 // ---------- Étape 5 : questions ----------
 async function poser(q) {
@@ -523,10 +880,87 @@ $("btn-question").onclick = () => poser($("question").value);
 $("question").addEventListener("keydown", (e) => { if (e.key === "Enter") poser($("question").value); });
 document.querySelectorAll(".puce").forEach((b) => (b.onclick = () => poser(b.textContent)));
 
-// ---------- Visionneuse : liens dans les deux sens ----------
+// ---------- Sélection : groupes entiers et objets isolés, depuis le métré ou la visionneuse ----------
 const PAGE = { metre: null, estimation: null };
+const SEL = { groupes: new Set(), unites: new Map() }; // objets : identifiant -> groupe
+let LIGNE = null;   // ligne d'estimation ouverte (surlignée en bleu dans la vue)
+let BIBLIO = [];    // bibliothèque de prix, pour le choix manuel
+let INFOS_UNITES = {}; // noms des objets cliqués (pour les libellés)
 const fmtQ = (v, u, d = 2) => v === null || v === undefined ? null : nb(v, d) + " " + u;
 
+function groupe(gid) { return (PAGE.metre?.groupes || []).find((g) => g.id === gid); }
+function tailleSelection() { return SEL.groupes.size + SEL.unites.size; }
+function viderSelection(maj = true) { SEL.groupes.clear(); SEL.unites.clear(); if (maj) majSelection(false); }
+function retirerObjetsDuGroupe(gid) { for (const [u, g] of [...SEL.unites]) if (g === gid) SEL.unites.delete(u); }
+function remplacerSelection({ groupes = [], unites = [], g = null }) {
+  viderSelection(false);
+  groupes.forEach((x) => SEL.groupes.add(x));
+  for (const u of unites) SEL.unites.set(u, INFOS_UNITES[u]?.g || g || groupes[0] || null);
+}
+function cibleSelection() { return { groupes: [...SEL.groupes], unites: [...SEL.unites.keys()] }; }
+
+function texteSelection(court = false) {
+  const nbG = SEL.groupes.size, nbU = SEL.unites.size;
+  if (!nbG && !nbU) return "";
+  const morceaux = [];
+  if (nbG === 1 && !court) { const g = groupe([...SEL.groupes][0]); morceaux.push(g ? libelleGroupe(g) : [...SEL.groupes][0]); }
+  else if (nbG) morceaux.push(nbG + " type" + (nbG > 1 ? "s" : "") + " entier" + (nbG > 1 ? "s" : ""));
+  if (nbU === 1 && !court) { const u = [...SEL.unites.keys()][0]; morceaux.push(INFOS_UNITES[u]?.nom || "1 objet"); }
+  else if (nbU) morceaux.push(nbU + " objet" + (nbU > 1 ? "s" : ""));
+  return morceaux.join(" + ");
+}
+function libelleGroupe(g) {
+  if (g.source === "dxf") return ({ bloc: "Bloc", local: "Locaux", calque: "Calque" }[g.genre]) + " « " + g.type + " »" + (g.genre !== "calque" ? " (" + g.nombre + ")" : "");
+  return g.categorie + " « " + g.type + " » (" + g.nombre + ")";
+}
+
+// Parties à surligner : sélection (orange) et ligne ouverte (bleu)
+function partiesVision() {
+  const selection = { groupes: [...SEL.groupes], unites: [...SEL.unites.keys()] };
+  let focus = null;
+  const l = LIGNE && PAGE.estimation?.lignes.find((y) => y.code === LIGNE);
+  if (l) {
+    focus = { groupes: [], unites: [], sauf: [] };
+    for (const s of l.sources) {
+      if (s.supplement) continue;
+      if (s.unites) focus.unites.push(...s.unites);
+      else { focus.groupes.push(s.g); focus.sauf.push(...(s.sauf || [])); }
+    }
+  }
+  return { selection, focus };
+}
+
+function majSelection(cadrer) {
+  const n = tailleSelection();
+  $("barre-sel").classList.toggle("cache", !n);
+  $("sel-texte").innerHTML = n ? `<b>Sélection :</b> ${esc(texteSelection())}` : "";
+  const avecEst = !!PAGE.estimation;
+  for (const id of ["sel-chiffrer", "sel-exclure", "sel-ia"]) $(id).disabled = !avecEst;
+  if (!avecEst && n) $("sel-texte").innerHTML += ` <span style="opacity:.8">— lancez l'étape « Associer les prix » pour les chiffrer</span>`;
+  // lignes du métré : groupe entier (plein) ou quelques objets (partiel)
+  const partiels = new Set(SEL.unites.values());
+  document.querySelectorAll("#t3 tr[data-g]").forEach((tr) => {
+    tr.classList.toggle("choisie", SEL.groupes.has(tr.dataset.g));
+    tr.classList.toggle("partielle", !SEL.groupes.has(tr.dataset.g) && partiels.has(tr.dataset.g));
+  });
+  if (document.body.classList.contains("avec-vis") && Visionneuse.mode()) {
+    const r = Visionneuse.afficherChoix(partiesVision(), cadrer ? (n ? "selection" : null) : null);
+    if (n) ficheSelection(r.nbSelection);
+    else if (!LIGNE) ficheVide();
+  }
+  // le bouton « + Ajouter la sélection » d'une ligne ouverte suit la sélection
+  const b = document.querySelector("#t4 [data-action=ajouter-sel]");
+  if (b) {
+    b.disabled = !n; b.textContent = "+ Ajouter la sélection" + (n ? " (" + texteSelection(true) + ")" : "");
+    document.querySelector("#t4 [data-action=deplacer-sel]").disabled = !n;
+  }
+}
+$("sel-vider").onclick = () => viderSelection();
+$("sel-chiffrer").onclick = () => ouvrirChoixPrix({ genre: "affecter" });
+$("sel-exclure").onclick = () => ajuster({ action: "exclure", ...cibleSelection() }).then((d) => d && viderSelection());
+$("sel-ia").onclick = () => ajuster({ action: "reinitialiser", ...cibleSelection() });
+
+// ---------- Visionneuse : liens dans les deux sens ----------
 async function ouvrirVisionneuse(m) {
   document.body.classList.add("avec-vis");
   $("vis-titre").textContent = m.fichier;
@@ -543,24 +977,25 @@ async function ouvrirVisionneuse(m) {
     } else {
       Visionneuse.chargerPlan(await api("/api/visionneuse/dessin"));
     }
+    if (PAGE.estimation) Visionneuse.colorier(etatsControle(PAGE.estimation));
+    majSelection(false);
   } catch (err) {
     Visionneuse.message("Vue indisponible : " + err.message);
   }
 }
 
-function groupe(gid) { return (PAGE.metre?.groupes || []).find((g) => g.id === gid); }
 function lignesDuGroupe(gid) { return (PAGE.estimation?.lignes || []).filter((l) => l.groupes.includes(gid)); }
-
-function marquerLignes(gs) {
-  const ens = new Set(gs);
-  document.querySelectorAll("tr.choisie").forEach((tr) => tr.classList.remove("choisie"));
-  document.querySelectorAll("#t3 tr[data-g]").forEach((tr) => ens.has(tr.dataset.g) && tr.classList.add("choisie"));
-  document.querySelectorAll("#t4 tr[data-g]").forEach((tr) => tr.dataset.g.split(",").some((g) => ens.has(g)) && tr.classList.add("choisie"));
+// lignes de prix d'un objet : ses choix propres, sinon ceux de son groupe
+function codesObjet(uid, gid) {
+  const e = PAGE.estimation;
+  if (!e) return [];
+  return (e.unites_modifiees && e.unites_modifiees[uid]) || (e.affectations[gid] || { codes: [] }).codes;
 }
 
 function ficheVide() {
   $("fiche").className = "fiche vide";
-  $("fiche").textContent = "Cliquez une ligne du métré ou de l'estimation pour la localiser, ou un objet dans la vue pour voir sa fiche et ses prix.";
+  $("fiche").innerHTML = "Cliquez un objet dans la vue ou une ligne du métré pour le sélectionner (<kbd>Maj</kbd>+clic pour en ajouter), " +
+    "puis « Chiffrer avec… ». Cliquez une ligne de l'estimation pour voir ses éléments en bleu.";
 }
 
 function blocGroupe(gid) {
@@ -570,66 +1005,216 @@ function blocGroupe(gid) {
   return `<div><b>${esc(g.id)}</b> ${esc(g.categorie)} « ${esc(g.type)} » — ${g.nombre} élément(s)${q ? " · " + q : ""}</div>`;
 }
 
-function blocLignes(gs) {
-  const vues = new Set(), lignes = [];
-  for (const g of gs) for (const l of lignesDuGroupe(g)) if (!vues.has(l.code)) { vues.add(l.code); lignes.push(l); }
+function blocCodes(codes, retrait) {
   if (!PAGE.estimation) return `<p class="petit">Les lignes de prix apparaîtront ici après l'étape « Associer les prix ».</p>`;
-  if (!lignes.length) {
-    const nc = (PAGE.estimation.non_chiffres || []).concat(PAGE.estimation.ignores || []).filter((n) => gs.includes(n.groupe));
-    return `<p class="petit">Aucune ligne de prix${nc.length ? " : " + esc(nc[0].raison) : ""}</p>`;
-  }
-  return `<div class="petit" style="margin-top:8px">Ligne(s) de prix :</div>` + lignes.map((l) =>
-    `<div class="lp" data-code="${esc(l.code)}" title="Voir dans l'estimation"><span><b>${esc(l.code)}</b> ${esc(l.designation)}</span>
-     <span class="n" style="white-space:nowrap">${l.qte_manquante && !l.quantite ? "à saisir" : nb(l.quantite) + " " + esc(l.unite)} · <b>${eur.format(l.total)}</b></span></div>`).join("");
+  if (!codes.length) return `<p class="petit">Aucune ligne de prix.</p>`;
+  const parCode = Object.fromEntries(PAGE.estimation.lignes.map((l) => [l.code, l]));
+  return `<div class="petit" style="margin-top:8px">Ligne(s) de prix :</div>` + codes.map((c) => {
+    const l = parCode[c];
+    return `<div class="lp" data-code="${esc(c)}" title="Ouvrir la ligne dans l'estimation"><span><b>${esc(c)}</b> ${esc(l ? l.designation : "")}</span>
+     <span class="n" style="white-space:nowrap">${l ? (l.qte_manquante && !l.quantite ? "à saisir" : nb(l.quantite) + " " + esc(l.unite)) + " · <b>" + eur.format(l.total) + "</b>" : ""}
+     ${retrait ? `<button type="button" class="secondaire mini" data-retirer-code="${esc(c)}" title="Retirer ${retrait} de cette ligne">×</button>` : ""}</span></div>`;
+  }).join("");
 }
 
-function brancherFiche(gs) {
-  $("fiche").querySelectorAll(".lp").forEach((d) => (d.onclick = () => {
-    const tr = document.querySelector(`#t4 tr[data-code="${CSS.escape(d.dataset.code)}"]`);
-    if (tr) { tr.scrollIntoView({ behavior: "smooth", block: "center" }); choisirGroupes(tr.dataset.g.split(",")); }
+function brancherFiche() {
+  $("fiche").querySelectorAll(".lp").forEach((d) => (d.onclick = (ev) => {
+    const b = ev.target.closest("[data-retirer-code]");
+    if (b) return ajuster({ action: "retirer", code: b.dataset.retirerCode, ...cibleSelection() });
+    ouvrirLigne(d.dataset.code, true);
   }));
-  const bMetre = $("fiche").querySelector("[data-action=metre]");
-  if (bMetre) bMetre.onclick = () => document.querySelector(`#t3 tr[data-g="${CSS.escape(gs[0])}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-  const bTout = $("fiche").querySelector("[data-action=tout]");
-  if (bTout) bTout.onclick = () => choisirGroupes(gs);
+  $("fiche").querySelectorAll("[data-etendre]").forEach((b) => (b.onclick = () => etendreSelection(b.dataset.etendre)));
+  $("fiche").querySelectorAll("[data-niveau]").forEach((b) => (b.onclick = () => {
+    // types entiers sélectionnés -> leurs seuls objets situés sur ce niveau
+    const gs = [...SEL.groupes];
+    viderSelection(false);
+    for (const g of gs) Visionneuse.unitesOu({ groupes: [g], niveau: b.dataset.niveau }).forEach((u) => SEL.unites.set(u, g));
+    majSelection(true);
+  }));
+  const c = $("fiche").querySelector("[data-action=chiffrer]");
+  if (c) c.onclick = () => ouvrirChoixPrix({ genre: "affecter" });
+  const m = $("fiche").querySelector("[data-action=metre]");
+  if (m) m.onclick = () => document.querySelector(`#t3 tr[data-g="${CSS.escape(m.dataset.g)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-// Clic sur une ligne (métré, estimation, non chiffrés) -> objets surlignés et cadrés dans la vue
-function choisirGroupes(gs) {
-  if (!document.body.classList.contains("avec-vis") || !Visionneuse.mode()) return;
-  const r = Visionneuse.selectionnerGroupes(gs);
-  marquerLignes(gs);
+// Fiche de la sélection : un objet (détails, prix, étendre au type / catégorie / niveau) ou plusieurs éléments
+function ficheSelection(nbVisibles) {
+  const n = tailleSelection(), avecEst = !!PAGE.estimation;
+  const gs = [...new Set([...SEL.groupes, ...SEL.unites.values()])].filter(Boolean);
+  let h;
+  if (SEL.unites.size === 1 && !SEL.groupes.size) {
+    const [u, gid] = [...SEL.unites][0], info = INFOS_UNITES[u] || {};
+    const g = groupe(gid);
+    h = `<h3>${esc(info.titre || info.nom || u)}</h3><dl>${(info.details || []).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` +
+      blocGroupe(gid) + blocCodes(codesObjet(u, gid), "cet objet");
+    const cat = g ? (PAGE.metre.groupes.filter((x) => x.categorie === g.categorie)) : [];
+    h += `<div class="actions">${avecEst ? `<button data-action="chiffrer">Chiffrer avec…</button>` : ""}
+      ${g && g.nombre > 1 ? `<button class="secondaire" data-etendre="type" title="Sélectionner tous les objets de ce type">Tout le type (${g.nombre})</button>` : ""}
+      ${info.niveau && g && g.source !== "dxf" && Object.keys(g.niveaux || {}).length > 1 ? `<button class="secondaire" data-etendre="niveau" title="Les objets de ce type sur ce niveau">Ce type au niveau « ${esc(info.niveau)} » (${g.niveaux[info.niveau] || "?"})</button>` : ""}
+      ${cat.length > 1 ? `<button class="secondaire" data-etendre="categorie" title="Tous les types de cette catégorie">Toute la catégorie « ${esc(g.categorie)} » (${cat.length} types)</button>` : ""}
+      ${gid ? `<button class="secondaire" data-action="metre" data-g="${esc(gid)}">Voir dans le métré</button>` : ""}</div>`;
+  } else {
+    const codes = [...new Set([...SEL.groupes].flatMap((g) => codesObjet(null, g)).concat([...SEL.unites].flatMap(([u, g]) => codesObjet(u, g))))];
+    const cats = [...new Set(gs.map((g) => groupe(g)?.categorie).filter(Boolean))];
+    h = `<h3>${esc(texteSelection())} — ${nbVisibles} objet(s) surligné(s)</h3>` +
+      gs.slice(0, 8).map(blocGroupe).join("") + (gs.length > 8 ? `<div class="petit">… et ${gs.length - 8} autre(s) type(s)</div>` : "") +
+      blocCodes(codes, "la sélection") +
+      `<div class="actions">${avecEst ? `<button data-action="chiffrer">Chiffrer avec…</button>` : ""}
+       ${SEL.unites.size ? `<button class="secondaire" data-etendre="type" title="Sélectionner les types entiers de ces objets">Types entiers</button>` : ""}
+       ${cats.length === 1 && PAGE.metre.groupes.filter((x) => x.categorie === cats[0]).length > gs.length ? `<button class="secondaire" data-etendre="categorie">Toute la catégorie « ${esc(cats[0])} »</button>` : ""}
+       ${niveauxSelection().map((n) => `<button class="secondaire" data-niveau="${esc(n)}" title="Ne garder que les objets de ce niveau">Seulement « ${esc(n)} »</button>`).join("")}</div>`;
+  }
   $("fiche").className = "fiche";
-  $("fiche").innerHTML = `<h3>${gs.length === 1 ? "Groupe " + esc(gs[0]) : gs.length + " groupes"} — ${r.nb} objet(s) surligné(s)</h3>` +
-    (r.nb ? "" : `<p class="petit">Ces éléments n'ont pas de forme affichable.</p>`) +
-    gs.map(blocGroupe).join("") + blocLignes(gs) +
-    `<div class="actions"><button class="secondaire" data-action="metre">Voir dans le métré</button></div>`;
-  brancherFiche(gs);
+  $("fiche").innerHTML = h;
+  brancherFiche();
 }
 
-// Clic sur un objet dans la vue -> fiche de l'objet, de son groupe et de ses prix
-function afficherFiche(info) {
-  if (!info) { marquerLignes([]); ficheVide(); return; }
-  const gs = info.groupe ? [info.groupe] : [];
-  marquerLignes(gs);
+// niveaux proposés pour restreindre une sélection de types entiers (maquette IFC sur plusieurs niveaux)
+function niveauxSelection() {
+  if (PAGE.metre?.source !== "ifc" || !SEL.groupes.size || SEL.unites.size || Visionneuse.mode() !== "ifc") return [];
+  const niv = new Set();
+  for (const g of SEL.groupes) Object.keys(groupe(g)?.niveaux || {}).forEach((n) => niv.add(n));
+  return niv.size > 1 && niv.size <= 8 ? [...niv].sort() : [];
+}
+
+function etendreSelection(comment) {
+  const gs = [...new Set([...SEL.groupes, ...SEL.unites.values()])].filter(Boolean);
+  if (comment === "type") remplacerSelection({ groupes: gs });
+  else if (comment === "categorie") {
+    const cats = new Set(gs.map((g) => groupe(g)?.categorie));
+    remplacerSelection({ groupes: PAGE.metre.groupes.filter((g) => cats.has(g.categorie)).map((g) => g.id) });
+  } else if (comment === "niveau") {
+    const [u, gid] = [...SEL.unites][0], niveau = INFOS_UNITES[u]?.niveau;
+    const objets = Visionneuse.unitesOu({ groupes: [gid], niveau });
+    viderSelection(false);
+    objets.forEach((x) => SEL.unites.set(x, gid));
+  }
+  majSelection(true);
+}
+
+// Clic dans la vue : l'objet devient la sélection (Maj / ⌘ / Ctrl : ajouté ou retiré)
+function surChoixVue(info) {
+  if (!info || info.vide) { if (!info?.ajout) { viderSelection(false); LIGNE = null; if (PAGE.estimation) afficherEstimation(PAGE.estimation); majSelection(false); } return; }
+  const gid = info.groupe;
+  if (info.unite) INFOS_UNITES[info.unite] = { g: gid, nom: info.titre, titre: info.titre, details: info.details, niveau: info.niveau };
+  if (!gid) { ficheInconnu(info); return; }
+  if (info.ajout) {
+    if (info.unite) {
+      if (SEL.unites.has(info.unite)) SEL.unites.delete(info.unite);
+      else if (SEL.groupes.has(gid)) {  // retirer un objet d'un type entier sélectionné : on détaille le type
+        SEL.groupes.delete(gid);
+        Visionneuse.unitesOu({ groupes: [gid] }).filter((u) => u !== info.unite).forEach((u) => SEL.unites.set(u, gid));
+      } else SEL.unites.set(info.unite, gid);
+    } else if (SEL.groupes.has(gid)) SEL.groupes.delete(gid);
+    else { SEL.groupes.add(gid); retirerObjetsDuGroupe(gid); }
+  } else remplacerSelection(info.unite ? { unites: [info.unite], g: gid } : { groupes: [gid] });
+  majSelection(false);
+  document.querySelector(`#t3 tr[data-g="${CSS.escape(gid)}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function ficheInconnu(info) {
   $("fiche").className = "fiche";
-  $("fiche").innerHTML = `<h3>${esc(info.titre)}</h3><dl>${info.details.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` +
-    (gs.length ? blocGroupe(gs[0]) + blocLignes(gs) : `<p class="petit">Élément non rattaché au métré.</p>`) +
-    `<div class="actions">${info.nbGroupe > 1 ? `<button data-action="tout">Surligner tout le groupe (${info.nbGroupe})</button>` : ""}
-     ${gs.length ? `<button class="secondaire" data-action="metre">Voir dans le métré</button>` : ""}</div>`;
-  brancherFiche(gs);
+  $("fiche").innerHTML = `<h3>${esc(info.titre)}</h3><dl>${(info.details || []).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl><p class="petit">Élément non rattaché au métré.</p>`;
 }
 
-for (const id of ["t3", "t4"]) $(id).addEventListener("click", (e) => {
-  const tr = e.target.closest("tr[data-g]");
-  if (tr && tr.dataset.g) choisirGroupes(tr.dataset.g.split(","));
-});
-$("nc").addEventListener("click", (e) => { const s = e.target.closest(".lien-g"); if (s) choisirGroupes([s.dataset.g]); });
+// Fiche d'une ligne ouverte
+function ficheLigne(l, nbFocus) {
+  $("fiche").className = "fiche";
+  $("fiche").innerHTML = `<h3>${esc(l.code)} — ${esc(l.designation)}</h3>
+    <div>${l.qte_manquante && !l.quantite ? "Quantité à saisir" : nb(l.quantite) + " " + esc(l.unite)} × ${eur.format(l.pu)} = <b>${eur.format(l.total)}</b></div>
+    <div class="petit" style="margin:6px 0">${nbFocus} objet(s) en bleu dans la vue · ${l.sources.length} source(s)</div>
+    ${l.sources.map((s) => `<div class="petit">• ${esc(s.libelle)}${s.quantite !== null && s.quantite !== undefined ? " : " + nb(s.quantite) + " " + esc(l.unite) : ""}${s.origine !== "ia" ? " <i>(" + (s.origine === "appris" ? "choix repris" : "ajouté à la main") + ")</i>" : ""}</div>`).join("")}
+    <p class="petit">Sélectionnez d'autres éléments (<kbd>Maj</kbd>+clic) puis « + Ajouter la sélection » dans le tableau, ou retirez une source avec ×.</p>`;
+}
+
 $("vis-reduire").onclick = () => {
   const r = document.body.classList.toggle("vis-reduite");
   $("vis-reduire").textContent = r ? "Agrandir" : "Réduire";
 };
-Visionneuse.init($("vis"), { surChoix: afficherFiche });
+Visionneuse.init($("vis"), { surChoix: surChoixVue });
+
+// ---------- Choix d'une ligne de prix (recherche) ----------
+const DLG = { genre: null, code: null };
+const NATURE_UNITE = (u) => {
+  u = String(u || "").toLowerCase().replace("²", "2").replace("³", "3").replace(".", "").trim();
+  if (["m2", "mc"].includes(u)) return "surface";
+  if (u === "m3") return "volume";
+  if (["ml", "m"].includes(u)) return "longueur";
+  if (["u", "un", "unité", "unite", "pce", "nb", "ens", "ensemble"].includes(u)) return "nombre";
+  if (["ft", "forfait", "fft"].includes(u)) return "forfait";
+  return null;
+};
+// La sélection permet-elle de mesurer cette unité ? (sinon la quantité sera à saisir)
+function compatibilite(unite) {
+  const nature = NATURE_UNITE(unite);
+  if (nature === "forfait" || nature === "nombre") return nature === "nombre" && [...SEL.groupes].some((g) => groupe(g)?.genre === "calque") ? null : true;
+  const gs = [...new Set([...SEL.groupes, ...SEL.unites.values()])].map(groupe).filter(Boolean);
+  if (!gs.length || !nature) return null;
+  if (gs.some((g) => g.genre === "calque")) return null; // dépend de la nature du calque
+  return gs.every((g) => g[nature] !== null && g[nature] !== undefined);
+}
+
+function ouvrirChoixPrix({ genre, code = null, libelle = "", info = "" }) {
+  if (!BIBLIO.length) { $("msg-ajust").textContent = "Bibliothèque de prix indisponible : relancez l'étape « Associer les prix »."; return; }
+  DLG.genre = genre; DLG.code = code;
+  const saisie = genre === "saisie";
+  $("dlg-titre").textContent = saisie ? "Ajouter une quantité saisie à la main" : "Chiffrer : " + texteSelection();
+  $("dlg-sous-titre").textContent = saisie
+    ? "Pour un ouvrage non modélisé ou un complément. Choisissez la ligne de prix, puis indiquez la quantité." + (info ? " CCTP : " + info : "")
+    : "Le code calcule la quantité à partir du métré de ces éléments. ✓ : quantité mesurable · ⚠ : quantité à saisir ensuite.";
+  $("dlg-modes").classList.toggle("cache", saisie);
+  $("dlg-saisie").classList.toggle("cache", !saisie);
+  $("dlg-qte").value = ""; $("dlg-libelle").value = libelle;
+  $("dlg-recherche").value = "";
+  listePrix();
+  $("dlg-ok").disabled = !code;
+  $("dlg-prix").showModal();
+  (saisie && code ? $("dlg-qte") : $("dlg-recherche")).focus();
+}
+
+function listePrix() {
+  const q = $("dlg-recherche").value.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const e = PAGE.estimation;
+  const gs = [...new Set([...SEL.groupes, ...SEL.unites.values()])];
+  const suggeres = new Set(DLG.genre === "affecter" ? gs.flatMap((g) => e?.affectations[g]?.ia || []) : []);
+  let liste = BIBLIO.filter((p) => !q || (p.code + " " + p.lot + " " + p.designation).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").includes(q));
+  const avec = liste.map((p) => ({ p, compat: DLG.genre === "affecter" ? compatibilite(p.unite) : null }));
+  avec.sort((a, b) => (suggeres.has(b.p.code) - suggeres.has(a.p.code)) || ((b.compat === true) - (a.compat === true)) || a.p.lot.localeCompare(b.p.lot) || a.p.code.localeCompare(b.p.code));
+  $("dlg-liste").innerHTML = avec.map(({ p, compat }) => `<div class="prix${DLG.code === p.code ? " actif" : ""}" data-code="${esc(p.code)}" tabindex="0">
+      <b>${esc(p.code)}</b><span>${esc(p.designation)}${suggeres.has(p.code) ? '<span class="suggere">proposé par l\'IA</span>' : ""}</span>
+      <span class="compat ${compat === true ? "ok" : compat === false ? "ko" : ""}">${compat === true ? "✓ mesurable" : compat === false ? "⚠ à saisir" : ""}</span>
+      <span class="pu">${eur.format(p.pu)} / ${esc(p.unite)}</span><span class="lot-p">${esc(p.lot)}</span></div>`).join("")
+    || `<p class="petit" style="padding:10px">Aucune ligne de prix ne correspond.</p>`;
+}
+$("dlg-recherche").addEventListener("input", listePrix);
+$("dlg-recherche").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") { ev.preventDefault(); const p = $("dlg-liste").querySelector(".prix"); if (p) choisirPrix(p.dataset.code, DLG.genre !== "saisie"); }
+});
+$("dlg-liste").addEventListener("click", (ev) => { const p = ev.target.closest(".prix"); if (p) choisirPrix(p.dataset.code, false); });
+$("dlg-liste").addEventListener("dblclick", (ev) => { const p = ev.target.closest(".prix"); if (p) choisirPrix(p.dataset.code, true); });
+function choisirPrix(code, valider) {
+  DLG.code = code;
+  $("dlg-liste").querySelectorAll(".prix").forEach((d) => d.classList.toggle("actif", d.dataset.code === code));
+  $("dlg-ok").disabled = false;
+  if (DLG.genre === "saisie") { if (!$("dlg-libelle").value) $("dlg-libelle").value = BIBLIO.find((p) => p.code === code)?.designation || ""; $("dlg-qte").focus(); }
+  else if (valider) $("dlg-ok").click();
+}
+$("dlg-annuler").onclick = () => $("dlg-prix").close();
+$("dlg-qte").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("dlg-ok").click(); } });
+$("dlg-ok").onclick = async () => {
+  if (!DLG.code) return;
+  if (DLG.genre === "saisie") {
+    const v = $("dlg-qte").value.trim();
+    if (!v) { $("dlg-qte").focus(); return; }
+    $("dlg-prix").close();
+    const d = await ajuster({ action: "supplement", code: DLG.code, valeur: v, libelle: $("dlg-libelle").value });
+    if (d) ouvrirLigne(DLG.code, true);
+  } else {
+    const mode = $("dlg-form").querySelector("input[name=mode]:checked").value;
+    $("dlg-prix").close();
+    const d = await ajuster({ action: "affecter", code: DLG.code, mode, ...cibleSelection() });
+    if (d) { viderSelection(); LIGNE = null; ouvrirLigne(DLG.code, false); }
+  }
+};
 
 init().catch((e) => statut("s1", esc(e.message), "erreur"));
 </script>

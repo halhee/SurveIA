@@ -3,13 +3,21 @@
  *  - Maquette IFC : rendu 3D WebGL2 (géométrie calculée par le serveur).
  *  - Plan DXF/DWG : dessin 2D en SVG.
  * API : Visionneuse.init(conteneur, { surChoix }) ; .chargerIFC(arrayBuffer) ; .chargerPlan(json)
- *       .selectionnerGroupes(["G01", ...]) ; .effacerSelection()
+ *       .afficherChoix({ selection, focus }, cadrer)  — parties = { groupes: [...], unites: [...], sauf: [...] }
+ *       .selectionnerGroupes(["G01", ...]) ; .effacerSelection() ; .colorier({ groupes, unites } | null)
+ *       .unitesOu({ groupes, niveau }) : objets d'un ou plusieurs groupes (sur un niveau donné)
  * surChoix(info) est appelé quand l'utilisateur clique un objet (info = null : clic dans le vide).
+ * info.unite : identifiant de l'objet cliqué (chiffrable seul) ; info.ajout : touche Maj, ⌘ ou Ctrl enfoncée.
+ * La sélection (orange) et la ligne consultée (bleu) sont décidées par la page, pas par la visionneuse.
  */
 (function () {
   "use strict";
 
   const ORANGE = [0.93, 0.47, 0.12];
+  const BLEU = [0.16, 0.5, 0.92];
+  // Contrôle du chiffrage : couleur de chaque objet selon son état
+  const ETATS = { ia: [0.36, 0.7, 0.45], manuel: [0.58, 0.42, 0.86], non: [0.9, 0.3, 0.24], exclu: [0.66, 0.66, 0.66] };
+  const LIBELLES_ETATS = { ia: "chiffré (IA)", manuel: "chiffré à la main", non: "non chiffré", exclu: "hors chiffrage" };
   const COULEURS = {
     IfcWall: [0.86, 0.85, 0.81], IfcCurtainWall: [0.62, 0.78, 0.9], IfcSlab: [0.72, 0.72, 0.7], IfcRoof: [0.66, 0.6, 0.56],
     IfcColumn: [0.6, 0.62, 0.66], IfcBeam: [0.6, 0.62, 0.66], IfcFooting: [0.55, 0.55, 0.53], IfcPile: [0.55, 0.55, 0.53],
@@ -89,7 +97,7 @@ uniform int u_mode; uniform vec3 u_lum;
 out vec4 sortie;
 void main() {
   if (u_mode == 2) {
-    if (v_col.a < 0.2) discard;
+    if (v_col.a < 0.1) discard;  // les objets estompés restent cliquables (sélection multiple)
     int id = v_elem + 1;
     sortie = vec4(float(id & 255) / 255.0, float((id >> 8) & 255) / 255.0, float((id >> 16) & 255) / 255.0, 1.0);
     return;
@@ -119,11 +127,13 @@ void main() {
     const pos = new Float32Array(tampon, o, entete.nb_sommets * 3); o += pos.byteLength;
     const num = new Float32Array(tampon, o, entete.nb_sommets); o += num.byteLength;
     const idx = new Uint32Array(tampon, o, entete.nb_indices);
-    Object.assign(ifc, { entete, n: entete.elements.length, selection: new Set(), niveau: -1, locaux: false });
+    Object.assign(ifc, { entete, n: entete.elements.length, selection: new Set(), focus: new Set(), niveau: -1, locaux: false,
+      controle: false, etats: null });
 
-    // index groupe -> éléments
+    // index groupe -> éléments, identifiant d'objet -> élément
     ifc.parGroupe = {};
-    entete.elements.forEach((e, i) => (ifc.parGroupe[e[1]] ||= []).push(i));
+    ifc.parUnite = new Map();
+    entete.elements.forEach((e, i) => { (ifc.parGroupe[e[1]] ||= []).push(i); ifc.parUnite.set(String(e[0]), i); });
 
     scene.innerHTML = "";
     const canvas = el("canvas", { class: "v-canvas" });
@@ -160,7 +170,7 @@ void main() {
     // Caméra en orbite (Z vers le haut)
     ifc.cam = { cible: [0, 0, 0], dist: 30, azim: -2.2, elev: 0.55 };
     construireBarreIFC();
-    majEtat();
+    appliquerControle();  // colore selon le chiffrage si le contrôle était actif (appelle majEtat)
     brancherSouris(canvas);
     ifc.observateur = new ResizeObserver(() => { dimensionner(); dessiner(); });
     ifc.observateur.observe(scene);
@@ -201,14 +211,61 @@ void main() {
       cadrer(ifc.selection.size ? [...ifc.selection] : null);
     };
     const bTout = el("button", { type: "button", title: "Tout afficher" }, "Tout voir");
-    bTout.onclick = () => { V.effacerSelection(); surChoix(null); };
-    barre.append(sel, locaux, dalles, b3d, bDessus, bTout);
+    bTout.onclick = () => { V.effacerSelection(); surChoix(null); cadrer(null); };
+    barre.append(sel, locaux, dalles, b3d, bDessus, bTout, caseControle());
     if (e.sans_geometrie) barre.append(el("span", { class: "v-note", title: "Éléments dont la forme n'a pas pu être lue" }, e.sans_geometrie + " sans forme"));
-    barre.append(el("span", { class: "v-aide" }, "Glisser : tourner · Maj+glisser : déplacer · Molette : zoom"));
+    barre.append(el("span", { class: "v-aide" }, "Glisser : tourner · Maj+glisser : déplacer · Molette : zoom · Maj+clic : ajouter à la sélection"));
   }
 
+  // Case « Contrôle » : colore chaque objet selon son état de chiffrage (vert, violet, rouge, gris)
+  function caseControle() {
+    const lab = el("label", { class: "v-case v-controle", title: "Colorer les objets selon leur chiffrage : repérez d'un coup d'œil ce qui n'est pas chiffré" });
+    const cb = el("input", { type: "checkbox" });
+    cb.disabled = !etatsCourants;
+    cb.checked = controleActif && !!etatsCourants;
+    cb.onchange = () => { controleActif = cb.checked; appliquerControle(); };
+    lab.append(cb, document.createTextNode(" Contrôle"));
+    const legende = el("span", { class: "v-legende" });
+    for (const [k, c] of Object.entries(ETATS)) {
+      const p = el("span", { class: "v-pastille" });
+      p.style.background = `rgb(${c.map((x) => Math.round(x * 255)).join(",")})`;
+      legende.append(p, document.createTextNode(LIBELLES_ETATS[k] + " "));
+    }
+    const boite = el("span", { class: "v-bloc-controle" });
+    boite.append(lab, legende);
+    return boite;
+  }
+  let etatsCourants = null, controleActif = false;
+
+  function appliquerControle() {
+    const actif = controleActif && !!etatsCourants;
+    if (racine) racine.classList.toggle("v-en-controle", actif);
+    if (mode === "ifc") {
+      ifc.controle = actif;
+      if (actif) {
+        ifc.etats = ifc.entete.elements.map((inf) => etatsCourants.unites[String(inf[0])] || etatsCourants.groupes[inf[1]] || null);
+      }
+      majEtat();
+    } else if (mode === "dxf") {
+      plan.chemins.forEach((c, i) => {
+        c.classList.remove("e-ia", "e-manuel", "e-non", "e-exclu");
+        if (!actif) return;
+        const e = (plan.uDe[i] && etatsCourants.unites[plan.uDe[i]]) || (plan.gDe[i] && etatsCourants.groupes[plan.gDe[i]]);
+        if (e) c.classList.add("e-" + e);
+      });
+    }
+  }
+
+  V.colorier = function (etats) {
+    etatsCourants = etats;
+    const cb = barre && barre.querySelector(".v-controle input");
+    if (cb) { cb.disabled = !etats; cb.checked = controleActif && !!etats; }
+    if (mode) appliquerControle();
+  };
+
   function majEtat() {
-    const e = ifc.entete, et = ifc.etat, sel = ifc.selection, avecSel = sel.size > 0;
+    const e = ifc.entete, et = ifc.etat, sel = ifc.selection, foc = ifc.focus, avecSel = sel.size > 0 || foc.size > 0;
+    const controle = ifc.controle && ifc.etats;
     const idxLocal = e.classes.indexOf("IfcSpace");
     const dalles = new Set(["IfcSlab", "IfcRoof", "IfcCovering"].map((c) => e.classes.indexOf(c)).filter((k) => k >= 0));
     for (let i = 0; i < ifc.n; i++) {
@@ -220,6 +277,11 @@ void main() {
       if (!bonNiveau) a = 0;
       else if (ifc.sansDalles && dalles.has(inf[2]) && !sel.has(i)) a = 0;
       else if (sel.has(i)) { [r, g, b] = ORANGE; a = estLocal ? 0.62 : 1; }
+      else if (foc.has(i)) { [r, g, b] = BLEU; a = estLocal ? 0.55 : 1; }
+      else if (controle && ifc.etats[i]) {
+        [r, g, b] = ETATS[ifc.etats[i]];
+        a = estLocal ? (ifc.locaux && !avecSel ? 0.4 : 0) : (ifc.etats[i] === "exclu" ? (avecSel ? 0.12 : 0.3) : (avecSel ? 0.16 : 1));
+      }
       else if (estLocal) a = ifc.locaux && !avecSel ? 0.35 : 0;
       else if (avecSel) { r = g = b = 0.62; a = 0.13; }
       const o = i * 4;
@@ -352,7 +414,7 @@ void main() {
       if (depart && !depart.bouge) {
         const r = canvas.getBoundingClientRect(), dpr = canvas.width / r.width;
         const i = prelever((e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr);
-        choisirElement(i);
+        choisirElement(i, e.shiftKey || e.metaKey || e.ctrlKey);
       }
       depart = null;
     });
@@ -371,14 +433,13 @@ void main() {
     canvas.addEventListener("gestureend", (e) => { e.preventDefault(); distDepart = null; });
   }
 
-  function choisirElement(i) {
-    if (i < 0) { V.effacerSelection(); surChoix(null); return; }
+  function choisirElement(i, ajout) {
+    if (i < 0) { surChoix(ajout ? { vide: true, ajout } : null); return; }
     const e = ifc.entete, inf = e.elements[i];
-    ifc.selection = new Set([i]);
-    majEtat();
     const classe = e.classes[inf[2]];
     surChoix({
-      source: "ifc", groupe: inf[1], titre: inf[4] || NOMS_CLASSES[classe] || classe,
+      source: "ifc", groupe: inf[1], unite: String(inf[0]), ajout, niveau: e.niveaux[inf[3]],
+      titre: inf[4] || NOMS_CLASSES[classe] || classe,
       details: [["Catégorie", (NOMS_CLASSES[classe] || classe) + " (" + classe + ")"], ["Niveau", e.niveaux[inf[3]]], ["Identifiant IFC", "#" + inf[0]]],
       nbGroupe: (ifc.parGroupe[inf[1]] || []).length,
     });
@@ -411,7 +472,7 @@ void main() {
     barre.innerHTML = "";
     const bTout = el("button", { type: "button" }, "Tout voir");
     bTout.onclick = () => { V.effacerSelection(); surChoix(null); cadrerPlan(null); };
-    barre.append(bTout, el("span", { class: "v-aide" }, "Glisser : déplacer · Molette : zoom · Clic : objet, local ou calque"));
+    barre.append(bTout, caseControle(), el("span", { class: "v-aide" }, "Glisser : déplacer · Molette : zoom · Clic : objet, local ou calque · Maj+clic : ajouter"));
     if (d.tronque) barre.append(el("span", { class: "v-note" }, "plan très lourd : affichage partiel"));
 
     scene.innerHTML = "";
@@ -442,8 +503,21 @@ void main() {
     svg.append(g, gt);
     scene.append(svg);
     plan.svg = svg; plan.g = g;
+    plan.focus = new Set();
+    // pour chaque trait : l'objet chiffrable (bloc inséré, local) et le groupe du métré auxquels il appartient
+    const gCalque = {}, gBloc = {};
+    for (const [gid, c] of Object.entries(d.groupes)) {
+      if (c.calque !== undefined) gCalque[c.calque] = gid;
+      if (c.bloc !== undefined) gBloc[c.bloc] = gid;
+    }
+    plan.uDe = d.prims.map((p, i) => (p[1] >= 0 ? "i" + p[1] : locaux[i] ? "l" + i : null));
+    plan.gDe = d.prims.map((p, i) => locaux[i] ? locaux[i][2] || null
+      : p[1] >= 0 ? (p[2].map((b) => gBloc[b]).find(Boolean) || null) : (gCalque[p[0]] || null));
+    plan.parUnite = new Map();
+    plan.uDe.forEach((u, i) => { if (u) { if (!plan.parUnite.has(u)) plan.parUnite.set(u, []); plan.parUnite.get(u).push(i); } });
     brancherPlan(svg);
     cadrerPlan(null);
+    appliquerControle();
   };
 
   function cadrerPlan(indices) {
@@ -482,7 +556,7 @@ void main() {
       plan.vue[0] = depart.vue[0] - dx * k; plan.vue[1] = depart.vue[1] - dy * k;
       appliquerVue();
     });
-    svg.addEventListener("pointerup", (e) => { if (depart && !depart.bouge) cliquerPlan(e); depart = null; });
+    svg.addEventListener("pointerup", (e) => { if (depart && !depart.bouge) cliquerPlan(e, e.shiftKey || e.metaKey || e.ctrlKey); depart = null; });
     svg.addEventListener("wheel", (e) => {
       e.preventDefault();
       const r = svg.getBoundingClientRect();
@@ -530,7 +604,7 @@ void main() {
     return null;
   }
 
-  function cliquerPlan(e) {
+  function cliquerPlan(e, ajout) {
     const [x, y] = versMonde(e);
     const d = plan.d, tol = 7 * plan.vue[2] / plan.svg.clientWidth;
     // 1. un bloc (porte, fenêtre, équipement) sous le curseur ?
@@ -542,11 +616,10 @@ void main() {
       }
     }
     if (meilleur && meilleur.aire < (d.bornes[2] - d.bornes[0]) * (d.bornes[3] - d.bornes[1]) * 0.05) {
-      const prims = d.prims.map((p, i) => (p[1] === meilleur.num ? i : -1)).filter((i) => i >= 0);
-      marquer(prims);
+      const prims = plan.parUnite.get("i" + meilleur.num) || [];
       const gid = groupeDe((c) => c.bloc === meilleur.ib);
-      surChoix({ source: "dxf", groupe: gid, titre: "Bloc « " + d.blocs[meilleur.ib] + " »",
-        details: [["Nature", "Bloc (objet inséré)"], ["Calque", d.calques[d.prims[prims[0]][0]] || "?"]],
+      surChoix({ source: "dxf", groupe: gid, unite: "i" + meilleur.num, ajout, titre: "Bloc « " + d.blocs[meilleur.ib] + " »",
+        details: [["Nature", "Bloc (objet inséré)"], ["Calque", prims.length ? d.calques[d.prims[prims[0]][0]] || "?" : "?"]],
         nbGroupe: null });
       return;
     }
@@ -561,10 +634,8 @@ void main() {
     if (proche && !locaux[proche.i]) {
       const k = d.prims[proche.i][0];
       const gid = groupeDe((c) => c.calque === k);
-      const prims = d.prims.map((p, i) => (p[0] === k && p[1] < 0 ? i : -1)).filter((i) => i >= 0);
-      marquer(prims);
-      surChoix({ source: "dxf", groupe: gid, titre: "Calque « " + d.calques[k] + " »",
-        details: [["Nature", "Traits du calque (tout le calque est surligné)"]], nbGroupe: null });
+      surChoix({ source: "dxf", groupe: gid, unite: null, ajout, titre: "Calque « " + d.calques[k] + " »",
+        details: [["Nature", "Traits du calque (le calque se chiffre en entier)"]], nbGroupe: null });
       return;
     }
     // 3. à l'intérieur d'un local ?
@@ -574,20 +645,21 @@ void main() {
       if (dansPolygone(x, y, c) && (!local || info[1] < local.info[1])) local = { i: +i, info };
     }
     if (local) {
-      marquer([local.i]);
-      surChoix({ source: "dxf", groupe: local.info[2], titre: local.info[0],
+      surChoix({ source: "dxf", groupe: local.info[2] || null, unite: local.info[2] ? "l" + local.i : null, ajout, titre: local.info[0],
         details: [["Nature", "Local"], ["Surface", local.info[1].toLocaleString("fr-FR", { minimumFractionDigits: 2 }) + " m²"]], nbGroupe: null });
       return;
     }
-    V.effacerSelection();
-    surChoix(null);
+    surChoix(ajout ? { vide: true, ajout } : null);
   }
 
-  function marquer(indices) {
+  function marquer(indices, focus = []) {
     for (const i of plan.selection) plan.chemins[i].classList.remove("sel");
+    for (const i of plan.focus) plan.chemins[i].classList.remove("foc");
     plan.selection = new Set(indices);
+    plan.focus = new Set(focus);
+    for (const i of focus) plan.chemins[i].classList.add("foc");
     for (const i of indices) plan.chemins[i].classList.add("sel");
-    plan.svg.classList.toggle("avec-selection", indices.length > 0);
+    plan.svg.classList.toggle("avec-selection", indices.length + focus.length > 0);
   }
 
   function primsDuGroupe(gid) {
@@ -602,6 +674,60 @@ void main() {
   // =========================================================================
   // Commandes communes
   // =========================================================================
+  // parties = { groupes: [gid…], unites: [uid…], sauf: [uid…] } : groupes entiers (moins « sauf ») + objets isolés
+  function indicesDe(parties) {
+    if (!parties) return [];
+    const sauf = new Set(parties.sauf || []), res = new Set();
+    if (mode === "ifc") {
+      for (const g of parties.groupes || []) for (const i of ifc.parGroupe[g] || []) if (!sauf.has(String(ifc.entete.elements[i][0]))) res.add(i);
+      for (const u of parties.unites || []) { const i = ifc.parUnite.get(String(u)); if (i !== undefined) res.add(i); }
+    } else if (mode === "dxf") {
+      for (const g of parties.groupes || []) for (const i of primsDuGroupe(g)) if (!sauf.has(plan.uDe[i])) res.add(i);
+      for (const u of parties.unites || []) for (const i of plan.parUnite.get(u) || []) res.add(i);
+    }
+    return [...res];
+  }
+
+  function compter(indices) {
+    if (mode !== "dxf") return indices.length;
+    // un bloc inséré = 1 objet, quel que soit son nombre de traits
+    const inserts = new Set();
+    return indices.filter((i) => { const n = plan.d.prims[i][1]; if (n >= 0) { inserts.add(n); return false; } return true; }).length + inserts.size;
+  }
+
+  V.afficherChoix = function ({ selection = null, focus = null } = {}, cadrerSur = null) {
+    const s = indicesDe(selection), f = indicesDe(focus);
+    if (mode === "ifc") {
+      ifc.selection = new Set(s); ifc.focus = new Set(f);
+      const cible = cadrerSur === "focus" ? f : cadrerSur === "selection" ? s : [];
+      if (cible.length && ifc.niveau >= 0 && !cible.some((i) => ifc.entete.elements[i][3] === ifc.niveau)) {
+        ifc.niveau = -1; ifc.selNiveau.value = "-1";
+      }
+      majEtat();
+      if (cible.length) cadrer(cible.filter((i) => ifc.niveau < 0 || ifc.entete.elements[i][3] === ifc.niveau));
+    } else if (mode === "dxf") {
+      marquer(s, f);
+      const cible = cadrerSur === "focus" ? f : cadrerSur === "selection" ? s : [];
+      if (cible.length) cadrerPlan(cible);
+    }
+    return { nbSelection: compter(s), nbFocus: compter(f) };
+  };
+
+  V.unitesOu = function ({ groupes = [], niveau = null } = {}) {
+    const res = [];
+    if (mode === "ifc") {
+      const k = niveau === null ? -1 : ifc.entete.niveaux.indexOf(niveau);
+      for (const g of groupes) for (const i of ifc.parGroupe[g] || []) {
+        const inf = ifc.entete.elements[i];
+        if (k < 0 || inf[3] === k) res.push(String(inf[0]));
+      }
+    } else if (mode === "dxf") {
+      const vus = new Set();
+      for (const g of groupes) for (const i of primsDuGroupe(g)) if (plan.uDe[i] && !vus.has(plan.uDe[i])) { vus.add(plan.uDe[i]); res.push(plan.uDe[i]); }
+    }
+    return res;
+  };
+
   V.selectionnerGroupes = function (groupes) {
     if (mode === "ifc") {
       const liste = [];
@@ -628,7 +754,7 @@ void main() {
   };
 
   V.effacerSelection = function () {
-    if (mode === "ifc") { ifc.selection = new Set(); majEtat(); }
+    if (mode === "ifc") { ifc.selection = new Set(); ifc.focus = new Set(); majEtat(); }
     if (mode === "dxf") marquer([]);
   };
 

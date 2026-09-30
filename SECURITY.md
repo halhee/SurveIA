@@ -26,6 +26,9 @@ Merci de **ne pas ouvrir d'issue publique** pour une faille de sécurité. Utili
   - la taille décompressée des `.docx` est contrôlée.
 - La conversion DWG appelle ODA File Converter avec un nom de fichier nettoyé, sans passer par un shell.
 
+### Modifications manuelles
+- Elles ne peuvent désigner que des codes de la bibliothèque, des groupes et des objets du métré chargé : tout le reste est refusé. Les quantités saisies sont bornées, les libellés limités en longueur, et tout texte est écrit dans l'Excel comme du texte.
+
 ### Réponses de l'IA
 - L'IA ne peut choisir que des codes **existants** dans la bibliothèque de prix : tout code inventé est rejeté. Les quantités ne viennent jamais de l'IA.
 - Ses réponses sont traitées comme des données, jamais exécutées.
@@ -35,4 +38,5 @@ Merci de **ne pas ouvrir d'issue publique** pour une faille de sécurité. Utili
 - L'API DeepSeek est hébergée en Chine. Sont envoyés : noms de types, calques, blocs et matériaux, quantités mesurées, désignations de prix, et **texte complet du CCTP** s'il est fourni. Les fichiers IFC et DXF eux-mêmes ne sont jamais envoyés.
 - **Vérifiez que c'est compatible avec vos engagements de confidentialité** avant d'utiliser des données de projets clients.
 - `memoire_correspondances.json`, créé à côté de l'application, contient les réponses de l'IA sur vos projets. Il est exclu du dépôt par `.gitignore` : **ne le publiez pas**. Vous pouvez le supprimer sans risque, ou utiliser « Vider la mémoire » dans l'interface.
+- `donnees_locales/`, créé à côté de l'application, contient vos modifications par fichier (repérés par une empreinte, pas par leur nom) et les choix que vous avez faits sur des types d'ouvrages. Il est aussi exclu du dépôt : **ne le publiez pas**. Emplacement modifiable avec la variable `CHIFFRAGE_DONNEES`.
 - Les fichiers de démonstration du dépôt sont entièrement fictifs.

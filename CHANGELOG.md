@@ -1,5 +1,18 @@
 # Historique des versions
 
+## Version 6 — ajustements en direct
+- **Corriger l'IA en quelques clics**, depuis le métré ou la visionneuse :
+  - sélection par type, par catégorie, par niveau ou objet par objet (<kbd>Maj</kbd>+clic dans la vue 3D / 2D) ;
+  - « Chiffrer avec… » : recherche dans la bibliothèque, lignes proposées par l'IA en tête, unité mesurable ou non ;
+  - retrait d'un type ou d'objets d'une ligne, exclusion puis réintégration, quantité forcée, saisie manuelle, validation ;
+  - nature des calques des plans 2D modifiable.
+- Chaque objet IFC garde ses propres quantités : une partie d'un type se chiffre exactement.
+- Recalcul instantané, sans appel à l'IA ; annuler / rétablir (⌘Z) et historique des modifications.
+- **Contrôle** dans la visionneuse : objets colorés selon leur état (IA, manuel, non chiffré, hors chiffrage).
+- **Sauvegarde automatique** des modifications par fichier, et **apprentissage** des choix faits sur des types entiers, repris dans les projets suivants.
+- Excel : statut « manuelle » ou « validée », quantités saisies commentées, onglet « Modifications ».
+- Les réponses aux questions tiennent compte des modifications de l'économiste.
+
 ## Version 5 — publication sur GitHub
 - **Visionneuse 3D (IFC) et 2D (DXF/DWG)**, liée dans les deux sens au métré et à l'estimation.
   - Un clic sur une ligne allume et cadre les objets concernés.
