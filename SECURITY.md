@@ -26,6 +26,9 @@ Merci de **ne pas ouvrir d'issue publique** pour une faille de sécurité. Utili
   - la taille décompressée des `.docx` est contrôlée.
 - La conversion DWG appelle ODA File Converter avec un nom de fichier nettoyé, sans passer par un shell.
 
+- **DPGF Excel** : lu sans exécuter de macro ni de formule (les formules sont lues comme du texte, jamais calculées) ; taille compressée et décompressée limitées, nombre de feuilles et de lignes plafonnés. Les macros d'un `.xlsm` ne sont pas conservées dans la copie renseignée (un `.xlsx`). Dans le DPGF renseigné, le texte venu de l'IA ou d'un fichier qui commence par `=` est écrit comme du texte. Le fichier d'origine n'est jamais réécrit : la copie renseignée est générée à la demande et envoyée au navigateur.
+- Le DPGF et le CCTP restent en mémoire pendant la session ; ils ne sont jamais écrits sur le disque. Aucun prix du DPGF n'est envoyé à l'IA.
+
 ### Modifications manuelles
 - Elles ne peuvent désigner que des codes de la bibliothèque, des groupes et des objets du métré chargé : tout le reste est refusé. Les quantités saisies sont bornées, les libellés limités en longueur, et tout texte est écrit dans l'Excel comme du texte.
 

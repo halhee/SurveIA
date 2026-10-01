@@ -92,6 +92,22 @@
   .reglages { margin-top: 12px; font-size: 14px; }
   .cctp { margin-top: 14px; border: 1px solid var(--trait); border-radius: 10px; padding: 12px 14px; }
   .art { font-size: 12px; color: var(--bleu); margin-top: 3px; }
+  .art.non-verifie { color: var(--rouge); font-weight: 600; }
+  .b-aetablir { background: var(--ambre-fond); color: var(--ambre); }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: var(--fond); border: 1px solid var(--trait); color: var(--doux); margin-left: 6px; }
+  tr.chap td { background: var(--fond); font-weight: 600; font-style: italic; }
+  tr.opt td.titre-opt { background: var(--ambre-fond); color: var(--ambre); }
+  .modes { display: grid; gap: 4px; margin: 8px 0; }
+  .modes label { font-weight: 500; font-size: 14px; display: flex; gap: 8px; align-items: flex-start; margin: 0; }
+  .lecture { max-height: 340px; overflow: auto; border: 1px solid var(--trait); border-radius: 8px; margin-top: 8px; }
+  .lecture table { font-size: 12px; }
+  .lecture td, .lecture th { padding: 3px 7px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lecture tr.g-article td { background: var(--vert-fond); }
+  .lecture tr.g-titre td { background: var(--bleu-clair); font-weight: 700; }
+  .lecture tr.g-entete td { background: var(--fond); font-weight: 700; }
+  .lecture tr.g-total td { color: var(--doux); text-decoration: line-through; }
+  .roles { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; font-size: 13px; }
+  .roles select, .roles input { padding: 3px 6px; font-size: 13px; width: auto; }
   .ecart { font-size: 12.5px; color: var(--rouge); margin-top: 3px; font-weight: 600; }
   .note.orange { background: var(--ambre-fond); }
   .reglages summary { cursor: pointer; color: var(--bleu); font-weight: 600; }
@@ -288,6 +304,26 @@
         <div id="cctp-info" class="petit" style="margin-top:6px">Sans CCTP, l'IA choisit les prix d'après les seuls noms de types, calques et blocs.
           Avec un CCTP, elle cite les articles, signale les écarts et liste les ouvrages non modélisés.</div>
       </div>
+      <div class="cctp" id="bloc-dpgf">
+        <div class="ligne" style="align-items:center">
+          <b style="font-size:14px">DPGF (facultatif)</b>
+          <label class="fichier" style="padding:6px 12px;font-size:13px">Joindre un DPGF (.xlsx, .xls)<input type="file" id="dpgf" accept=".xlsx,.xlsm,.xls"></label>
+          <button class="secondaire" id="btn-dpgf-demo" style="padding:6px 12px;font-size:13px">DPGF du maître d'œuvre (démo)</button>
+          <button class="secondaire" id="btn-dpgf-demo2" style="padding:6px 12px;font-size:13px">DPGF d'entreprise (démo)</button>
+          <button class="secondaire cache" id="btn-dpgf-retirer" style="padding:6px 12px;font-size:13px">Retirer</button>
+        </div>
+        <div id="dpgf-info" class="petit" style="margin-top:6px">Sans DPGF, les éléments sont associés aux lignes de la bibliothèque de prix.
+          Avec un DPGF, ses articles deviennent les lignes à chiffrer, dans son organisation (lots, chapitres, numéros) : quelle que soit sa structure,
+          le code la lit ; vous pouvez vérifier la lecture et la corriger. Le DPGF et le CCTP ne sont jamais modifiés : le DPGF vous est rendu rempli, en copie.</div>
+        <div id="dpgf-reglages" class="cache">
+          <div class="modes" id="dpgf-modes">
+            <label><input type="radio" name="mode-prix" value="dpgf"><span><b>Prix du DPGF</b> — ses prix unitaires tels quels (un article sans prix reste signalé).</span></label>
+            <label><input type="radio" name="mode-prix" value="bibliotheque"><span><b>Compléter avec la bibliothèque de prix</b> — prix du DPGF s'il y en a, sinon rapprochement automatique avec la bibliothèque (à confirmer).</span></label>
+            <label><input type="radio" name="mode-prix" value="aucun"><span><b>Quantités seulement</b> — pas de prix, pour remplir les quantités du DPGF.</span></label>
+          </div>
+          <details id="dpgf-lecture"><summary>Vérifier ce que le code a compris du DPGF</summary><div id="dpgf-apercu" class="petit">Chargement…</div></details>
+        </div>
+      </div>
       <div class="note">Bibliothèque de prix : <b id="biblio-nom">…</b> (<span id="biblio-nb">0</span> lignes).
         <label class="fichier" style="margin-left:6px;padding:4px 10px;font-size:13px">Remplacer par mon CSV<input type="file" id="csv" accept=".csv"></label>
         <span class="petit">Colonnes : code ; lot ; designation ; unite ; prix_unitaire_ht</span>
@@ -337,6 +373,7 @@
       </details>
       <div class="ligne" style="margin-top:14px">
         <button id="btn-excel">Télécharger l'estimation Excel</button>
+        <button id="btn-dpgf-rempli" class="cache" title="Votre DPGF d'origine, avec les quantités (et les prix choisis) dans ses colonnes, mise en page et formules conservées">Télécharger le DPGF renseigné</button>
         <button class="secondaire" id="btn-rechiffrer">Relancer la correspondance</button>
       </div>
       <div class="statut" id="s4"></div>
@@ -455,6 +492,7 @@ async function init() {
   }
   $("biblio-nom").textContent = e.bibliotheque.nom; $("biblio-nb").textContent = e.bibliotheque.nb;
   afficherCctp(e.cctp);
+  afficherDpgf(e.dpgf);
 }
 $("btn-cle").onclick = async () => {
   const stop = attente("s1", "Vérification de la clé auprès de DeepSeek…");
@@ -519,6 +557,79 @@ async function chargerCctp(chemin, corps) {
 $("btn-cctp-demo").onclick = () => chargerCctp("/api/cctp?demo=1", "");
 $("cctp").onchange = (e) => { const f = e.target.files[0]; if (f) chargerCctp("/api/cctp?nom=" + encodeURIComponent(f.name), f); e.target.value = ""; };
 $("btn-cctp-retirer").onclick = async () => { await api("/api/cctp_retirer", { method: "POST" }); afficherCctp(null); verrouiller("e4", "e5"); oublierEstimation(); statut("s2", "CCTP retiré."); };
+// ----- DPGF -----
+let DPGF = null;
+const pct = (x) => Math.round(100 * x) + " %";
+function afficherDpgf(d) {
+  DPGF = d;
+  $("btn-dpgf-retirer").classList.toggle("cache", !d);
+  $("dpgf-reglages").classList.toggle("cache", !d);
+  $("btn-dpgf-rempli").classList.toggle("cache", !d || !PAGE.estimation);
+  if (!d) {
+    $("dpgf-info").innerHTML = "Sans DPGF, les éléments sont associés aux lignes de la bibliothèque de prix. Avec un DPGF, ses articles deviennent les lignes à chiffrer, dans son organisation (lots, chapitres, numéros) : quelle que soit sa structure, le code la lit ; vous pouvez vérifier la lecture et la corriger. Le DPGF et le CCTP ne sont jamais modifiés : le DPGF vous est rendu rempli, en copie.";
+    return;
+  }
+  $("dpgf-info").innerHTML = `<span style="color:var(--vert);font-weight:600">✓ ${esc(d.fichier)}</span> — ${d.nb_articles} articles, ${d.nb_lots} lot(s)` +
+    (d.nb_pm ? `, ${d.nb_pm} « pour mémoire »` : "") + (d.nb_options ? `, ${d.nb_options} option(s)` : "") +
+    `<br>Prix déjà renseignés : ${pct(d.part_prix)} des articles · quantités déjà renseignées : ${pct(d.part_quantites)}` +
+    (d.feuilles_ignorees.length ? `<br>Feuilles non lues (pas de tableau d'articles) : ${d.feuilles_ignorees.map(esc).join(", ")}` : "") +
+    d.avertissements.map((a) => `<br><span style="color:var(--ambre)">⚠ ${esc(a)}</span>`).join("") +
+    (d.mode_prix === "bibliotheque" && d.nb_sans_prix ? `<br><span style="color:var(--ambre)">⚠ ${d.nb_sans_prix} article(s) sans équivalent dans la bibliothèque : prix à saisir.</span>` : "");
+  document.querySelectorAll("#dpgf-modes input").forEach((r) => { r.checked = r.value === d.mode_prix; });
+  $("dpgf-lecture").open = false; $("dpgf-apercu").dataset.charge = ""; $("dpgf-apercu").textContent = "Chargement…";
+}
+async function chargerDpgf(chemin, corps) {
+  const stop = attente("s2", "Lecture du DPGF…");
+  try {
+    afficherDpgf(await api(chemin, { method: "POST", body: corps }));
+    statut("s2", "DPGF chargé : ses articles seront les lignes du chiffrage. Vérifiez la lecture si sa structure est inhabituelle.", "ok");
+    verrouiller("e4", "e5"); oublierEstimation();
+  } catch (err) { statut("s2", esc(err.message), "erreur"); }
+  finally { stop(); }
+}
+$("btn-dpgf-demo").onclick = () => chargerDpgf("/api/dpgf?demo=1", "");
+$("btn-dpgf-demo2").onclick = () => chargerDpgf("/api/dpgf?demo=entreprise", "");
+$("dpgf").onchange = (e) => { const f = e.target.files[0]; if (f) chargerDpgf("/api/dpgf?nom=" + encodeURIComponent(f.name), f); e.target.value = ""; };
+$("btn-dpgf-retirer").onclick = async () => {
+  await api("/api/dpgf_retirer", { method: "POST" }); afficherDpgf(null); verrouiller("e4", "e5"); oublierEstimation(); statut("s2", "DPGF retiré : retour à la bibliothèque de prix.");
+};
+document.querySelectorAll("#dpgf-modes input").forEach((r) => r.onchange = async () => {
+  try {
+    afficherDpgf(await api("/api/dpgf_reglages", { method: "POST", body: JSON.stringify({ mode_prix: r.value }) }));
+    statut("s2", "Mode de prix changé : relancez la correspondance (instantané, rien n'est redemandé à l'IA).", "ok"); verrouiller("e4", "e5"); oublierEstimation();
+  } catch (err) { statut("s2", esc(err.message), "erreur"); }
+});
+$("dpgf-lecture").addEventListener("toggle", async () => {
+  const zone = $("dpgf-apercu");
+  if (!$("dpgf-lecture").open || zone.dataset.charge) return;
+  try {
+    const d = await api("/api/dpgf/apercu");
+    zone.dataset.charge = "1";
+    zone.innerHTML = d.feuilles.map((f, i) => {
+      const lettres = f.lettres;
+      const roles = d.roles.map(([r, lib]) => `<label>${esc(lib)} <select data-feuille="${i}" data-role="${r}"><option value="">—</option>` +
+        lettres.map((l) => `<option value="${l}"${f.colonnes[r] === l ? " selected" : ""}>${l}</option>`).join("") + `</select></label>`).join("");
+      const lignes = f.lignes.slice(0, 200).map((l) => `<tr class="g-${esc(l.genre)}"><td>${l.n}</td>` +
+        lettres.map((_, c) => `<td title="${esc(l.cellules[c] || "")}">${esc(l.cellules[c] || "")}</td>`).join("") + `</tr>`).join("");
+      return `<p><b>Feuille « ${esc(f.feuille)} »</b> — lecture ${f.methode === "manuel" ? "corrigée par vous" : f.methode === "ia" ? "aidée par l'IA" : f.methode === "contenu" ? "devinée d'après le contenu" : "d'après les en-têtes"}.
+        Vert : article · bleu : titre de lot ou de chapitre · barré : total ignoré.</p>
+        <div class="roles"><label>Ligne d'en-tête <input type="number" min="1" value="${f.entete}" data-feuille="${i}" data-role="entete" style="width:70px"></label>${roles}
+        <button type="button" class="secondaire mini" data-appliquer="${i}">Appliquer cette lecture</button></div>
+        <div class="lecture"><table><tr><th>#</th>${lettres.map((l) => `<th>${l}</th>`).join("")}</tr>${lignes}</table></div>`;
+    }).join("") + `<p class="petit">${d.articles.length} articles lus.</p>`;
+    zone.querySelectorAll("[data-appliquer]").forEach((b) => b.onclick = async () => {
+      const i = b.dataset.appliquer, feuille = d.feuilles[i].feuille, colonnes = {};
+      zone.querySelectorAll(`select[data-feuille="${i}"]`).forEach((s) => { if (s.value) colonnes[s.dataset.role] = s.value; });
+      const entete = zone.querySelector(`input[data-feuille="${i}"][data-role="entete"]`).value;
+      try {
+        afficherDpgf(await api("/api/dpgf_reglages", { method: "POST", body: JSON.stringify({ forcer: { [feuille]: { entete: +entete, colonnes } } }) }));
+        statut("s2", "Lecture corrigée.", "ok"); verrouiller("e4", "e5"); oublierEstimation(); $("dpgf-lecture").open = true;
+      } catch (err) { statut("s2", esc(err.message), "erreur"); }
+    });
+  } catch (err) { zone.textContent = err.message; }
+});
+$("btn-excel").onclick = () => { window.location = "/api/excel"; };
+$("btn-dpgf-rempli").onclick = () => { window.location = "/api/dpgf/rempli"; };
 $("unite").onchange = () => statut("s2", "Unités modifiées : rechargez le plan pour recalculer le métré.");
 $("csv").onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -631,9 +742,9 @@ $("vider-memoire").onclick = async (ev) => {
   $("info-memoire").textContent = "Mémoire vidée : la prochaine correspondance sera entièrement redemandée à DeepSeek.";
 };
 
-const CLASSE_CONF = { haute: "b-haute", moyenne: "b-moyenne", faible: "b-faible", manuelle: "b-manuelle", "validée": "b-validee" };
+const CLASSE_CONF = { haute: "b-haute", moyenne: "b-moyenne", faible: "b-faible", manuelle: "b-manuelle", "validée": "b-validee", "à établir": "b-aetablir" };
 const TITRE_CONF = { haute: "Confiance haute de l'IA", moyenne: "Confiance moyenne de l'IA : à relire", faible: "Confiance faible de l'IA : à vérifier",
-  manuelle: "Choisie à la main", "validée": "Relue et validée" };
+  manuelle: "Choisie à la main", "validée": "Relue et validée", "à établir": "Article du DPGF sans élément dans la maquette : quantité à établir" };
 
 function puceSource(l, s) {
   const cls = s.origine === "manuel" ? "o-manuel" : s.origine === "appris" ? "o-appris" : "";
@@ -648,35 +759,56 @@ function afficherEstimation(e) {
   PAGE.estimation = e;
   const aVerifier = e.lignes.filter((l) => l.a_verifier).length;
   $("k4").innerHTML = [
-    [eur.format(e.total_ht), "Total HT", "fort"], [eur.format(e.total_ht * (1 + e.tva)), "Total TTC (TVA " + Math.round(e.tva * 100) + " %)"],
-    [e.lignes.length, "lignes chiffrées"], [aVerifier + e.non_chiffres.length, "points à vérifier"],
+    ...(e.dpgf_info && e.dpgf_info.mode_prix === "aucun"
+      ? [["—", "Total HT : mode « quantités seulement »", "fort"]]
+      : [[eur.format(e.total_ht), "Total HT", "fort"], [eur.format(e.total_ht * (1 + e.tva)), "Total TTC (TVA " + Math.round(e.tva * 100) + " %)"]]),
+    [e.lignes.length, e.dpgf ? "articles du DPGF" : "lignes chiffrées"], [aVerifier + e.non_chiffres.length, "points à vérifier"],
+    ...(e.dpgf ? [[e.lignes.filter((l) => l.confiance === "à établir").length, "articles à établir (hors maquette)"]] : []),
+    ...(e.dpgf && e.total_options ? [[eur.format(e.total_options), "options (hors total)"]] : []),
     ...(e.nb_ajustements ? [[e.nb_ajustements, "modification(s) manuelle(s)"]] : []),
     ...(e.cctp ? [[(e.absents || []).filter((a) => !a.chiffre).length, "ouvrages du CCTP non modélisés"]] : []),
     [e.duree + " s", (e.appels ? e.appels + " appel(s) · " + (e.jetons_entree + e.jetons_sortie).toLocaleString("fr-FR") + " jetons" +
       (e.jetons_cache ? " (" + Math.round(100 * e.jetons_cache / Math.max(1, e.jetons_entree)) + " % de l'entrée en cache)" : "")
       : "aucun appel : tout vient de la mémoire") + " · " + esc(e.modele)],
   ].map(([v, l, c]) => `<div class="kpi ${c || ""}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
-  const lots = {};
-  e.lignes.forEach((l) => (lots[l.lot] ||= []).push(l));
+  $("btn-dpgf-rempli").classList.toggle("cache", !e.dpgf);
+  const lots = {}, options = {};
+  e.lignes.forEach((l) => ((l.option ? options : lots)[l.lot] ||= []).push(l));
   if (LIGNE && !e.lignes.some((l) => l.code === LIGNE)) LIGNE = null;
-  let h = `<tr><th>Code</th><th>Désignation</th><th>Éléments sources</th><th class="n">Quantité</th><th class="n">PU HT</th><th class="n">Total HT</th></tr>`;
-  for (const [lot, lignes] of Object.entries(lots).sort()) {
-    h += `<tr class="lot"><td colspan="6">${esc(lot)}</td></tr>`;
-    for (const l of lignes) {
-      const qte = l.qte_manquante && !l.quantite ? '<span class="badge b-non">à saisir</span>'
-        : l.qte_manuelle ? `<span class="qte-man" title="Quantité saisie à la main${l.quantite_calculee !== null && l.quantite_calculee !== undefined ? " (métré : " + nb(l.quantite_calculee) + ")" : ""}">✎ ${nb(l.quantite)}</span>` : nb(l.quantite);
-      h += `<tr class="cliquable${LIGNE === l.code ? " ouverte" : ""}" data-code="${esc(l.code)}" title="Clic : localiser et modifier cette ligne"><td class="petit" style="white-space:nowrap">${esc(l.code)}<br><span class="badge ${CLASSE_CONF[l.confiance] || ""}" title="${esc(TITRE_CONF[l.confiance] || "")}">${esc(l.confiance)}</span></td><td>${esc(l.designation)}<div class="petit">${esc(l.justification)}</div>
+  let h = `<tr><th>${e.dpgf ? "N° DPGF" : "Code"}</th><th>Désignation</th><th>Éléments sources</th><th class="n">Quantité</th><th class="n">PU HT</th><th class="n">Total HT</th></tr>`;
+  const ligneHtml = (l) => {
+    const qte = l.qte_manquante && !l.quantite ? '<span class="badge b-non">à saisir</span>'
+      : l.qte_manuelle ? `<span class="qte-man" title="Quantité saisie à la main${l.quantite_calculee !== null && l.quantite_calculee !== undefined ? " (métré : " + nb(l.quantite_calculee) + ")" : ""}">✎ ${nb(l.quantite)}</span>` : nb(l.quantite);
+    const pu = l.sans_prix && !(l.pu_source || "").startsWith("Sans prix") ? '<span class="badge b-faible" title="' + esc(l.pu_source) + '">sans prix</span>'
+      : (l.pu_source || "").startsWith("Sans prix") ? "—" : eur.format(l.pu);
+    const total = (l.pu_source || "").startsWith("Sans prix") ? "—" : eur.format(l.total);
+    let r = `<tr class="cliquable${LIGNE === l.code ? " ouverte" : ""}" data-code="${esc(l.code)}" title="Clic : localiser et modifier cette ligne"><td class="petit" style="white-space:nowrap">${esc(l.code)}<br><span class="badge ${CLASSE_CONF[l.confiance] || ""}" title="${esc(TITRE_CONF[l.confiance] || "")}">${esc(l.confiance)}</span></td><td>${esc(l.designation)}${l.pm ? '<span class="tag">PM</span>' : ""}${l.option ? '<span class="tag">option</span>' : ""}<div class="petit">${esc(l.justification)}</div>
         ${l.remarque ? `<div class="alerte">⚠ ${esc(l.remarque)}</div>` : ""}
-        ${(l.articles || []).map((a) => `<div class="art">CCTP art. ${esc(a.numero)} : « ${esc(a.extrait)} »</div>`).join("")}
+        ${(l.articles || []).map((a) => `<div class="art${a.verifie === false ? " non-verifie" : ""}">CCTP art. ${esc(a.numero)} : « ${esc(a.extrait)} »${a.verifie === false ? " — ⚠ non retrouvé dans le CCTP (" + esc(a.motif) + ")" : ""}</div>`).join("")}
+        ${l.cctp_ref ? `<div class="art">Réf. CCTP du DPGF : ${esc(l.cctp_ref)}</div>` : ""}
         ${(l.ecarts || []).map((x) => `<div class="ecart">⚠ Écart avec le CCTP : ${esc(x)}</div>`).join("")}
         ${l.hypothese ? `<div class="hypo">Calcul : ${esc(l.hypothese)}</div>` : ""}</td>
-        <td class="sources">${l.sources.map((s) => puceSource(l, s)).join("") || '<span class="petit">aucun élément : quantité saisie</span>'}</td>
+        <td class="sources">${l.sources.map((s) => puceSource(l, s)).join("") || '<span class="petit">${e.dpgf ? "aucun élément de la maquette" : "aucun élément : quantité saisie"}</span>'}</td>
         <td class="n">${qte} <span class="petit">${esc(l.unite)}</span></td>
-        <td class="n">${eur.format(l.pu)}</td><td class="n"><b>${eur.format(l.total)}</b></td></tr>`;
-      if (LIGNE === l.code) h += detailLigne(l);
+        <td class="n">${pu}</td><td class="n"><b>${total}</b></td></tr>`;
+    if (LIGNE === l.code) r += detailLigne(l);
+    return r;
+  };
+  const blocLots = (groupes, titreCls) => {
+    let r = "";
+    for (const [lot, lignes] of (e.dpgf ? Object.entries(groupes) : Object.entries(groupes).sort())) {
+      r += `<tr class="lot"><td colspan="6" class="${titreCls || ""}">${esc(lot)}</td></tr>`;
+      let chap = null;
+      for (const l of lignes) {
+        if (e.dpgf && l.chapitre && l.chapitre !== chap) { chap = l.chapitre; r += `<tr class="chap"><td colspan="6">${esc(chap)}</td></tr>`; }
+        r += ligneHtml(l);
+      }
+      r += `<tr class="st"><td colspan="5" class="n">Sous-total ${esc(lot)}</td><td class="n">${eur.format(lignes.reduce((s, l) => s + l.total, 0))}</td></tr>`;
     }
-    h += `<tr class="st"><td colspan="5" class="n">Sous-total ${esc(lot)}</td><td class="n">${eur.format(lignes.reduce((s, l) => s + l.total, 0))}</td></tr>`;
-  }
+    return r;
+  };
+  h += blocLots(lots);
+  if (Object.keys(options).length) h += `<tr class="lot opt"><td colspan="6" class="titre-opt">Options et prestations supplémentaires — non incluses dans le total</td></tr>` + blocLots(options, "titre-opt");
   $("t4").innerHTML = h;
 
   const cible = (n) => esc(JSON.stringify(n.unites ? { unites: n.unites, g: n.groupe } : { groupes: [n.groupe] }));

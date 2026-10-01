@@ -76,6 +76,51 @@ ECARTS = [
 ]
 
 
+# Mot-clé qui retrouve, parmi les articles d'un DPGF, celui qui correspond à une ligne de la bibliothèque d'exemple
+MOTS_DPGF = {
+    "GO-01": ["voile"], "GO-04": ["ép. 20 cm (plancher", "dalle ba 20"], "GO-05": ["ép. 22 cm", "dalle ba 22"],
+    "GO-06": ["dallage"], "GO-07": ["poteaux"], "GO-09": ["semelle"], "ET-01": ["étanchéité bicouche"],
+    "ET-02": ["relevés"], "ME-03": ["porte d'entrée"], "MI-01": ["âme pleine 83"], "MI-02": ["âme pleine 83"],
+    "MI-03": ["coupe-feu"], "CL-01": ["72/48"], "CL-02": ["acoustique"], "CL-03": ["hydrofuges ba13", "hydro 98/48"],
+    "CL-05": ["laine minérale"], "CL-06": ["hydrofuges ba13", "hydro 98/48"], "SR-02": ["garde-corps verre"],
+    "RS-01": ["carrelage", "grès cérame"], "RS-02": ["pvc"], "FP-01": ["dalles minérales"],
+    "FP-02": ["plaques de plâtre hydrofuges"], "PL-01": ["wc suspendu"], "PL-02": ["lavabo"],
+}
+
+
+def article_dpgf(code, ligne, articles):
+    """Numéro d'article du DPGF qui correspond au code de la bibliothèque (ou None : le DPGF n'a pas cet ouvrage)."""
+    if code == "ME-01":
+        mots = ["240 x"] if "240" in ligne else ["120 x"]
+    else:
+        mots = MOTS_DPGF.get(code, [])
+    for num, designation in articles:
+        if "option" in designation.lower() or "[option]" in designation.lower():
+            continue
+        if any(m in designation.lower() for m in mots):
+            return num
+    return None
+
+
+def lire_articles_dpgf(prefixe):
+    bloc = prefixe.split("ARTICLES DU DPGF DU PROJET", 1)[1].split("\n", 1)[1]
+    articles = []
+    for l in bloc.split("\n\n")[0].splitlines():
+        morceaux = [m.strip() for m in l.split(" | ")]
+        if len(morceaux) >= 4:
+            articles.append((morceaux[0], morceaux[2]))
+    return articles
+
+
+CCTP_TEXTE = [""]
+EXTRAIT_FAUX = {"SR-02": "garde-corps en verre trempé teinté dans la masse"}  # citation inventée : doit être détectée
+
+
+def extrait_reel(numero):
+    m = re.search(r"\n%s [^\n]+\n([^\n]+)" % re.escape(numero), "\n" + CCTP_TEXTE[0])
+    return " ".join(m.group(1).split()[:8]) if m else ""
+
+
 def avec_cctp(entree, ligne):
     ecart = ""
     for motcle, code, texte in ECARTS:
@@ -85,7 +130,7 @@ def avec_cctp(entree, ligne):
             break
     for o in entree["ouvrages"]:
         o["article_cctp"] = ARTICLES.get(o["code"], "")
-        o["extrait_cctp"] = "extrait de l'article %s" % o["article_cctp"] if o["article_cctp"] else ""
+        o["extrait_cctp"] = EXTRAIT_FAUX.get(o["code"]) or (extrait_reel(o["article_cctp"]) if o["article_cctp"] else "")
     entree["ecart_cctp"] = ecart
     if "Garde-corps" in ligne:
         entree["remarque"] = "Le CCTP (8.1) indique 6,00 ml."
@@ -163,7 +208,11 @@ class H(BaseHTTPRequestHandler):
         with VERROU:
             EN_COURS[0] -= 1
         fin = "stop"
-        if corps.get("response_format") and "Liste les ouvrages décrits au CCTP" in tout:
+        cctp_brut = tout.split("<<<", 1)[1].split(">>>", 1)[0] if "CCTP DU PROJET" in tout and "<<<" in tout else ""
+        CCTP_TEXTE[0] = cctp_brut
+        if corps.get("response_format") and "Repère la ligne d'en-tête du tableau" in tout:
+            contenu = json.dumps({"ligne": 1, "colonnes": {"numero": "A", "designation": "B", "unite": "C", "quantite": "D", "pu": "E"}})
+        elif corps.get("response_format") and "Liste les ouvrages décrits au CCTP" in tout:
             plan = "DU PLAN 2D" in tout or "LE PLAN 2D" in tout
             absents = [
                 {"lot": "02 Gros œuvre", "article": "2.1", "ouvrage": "Fondations : semelles filantes et isolées", "code": "GO-09", "info_quantite": "Volume indicatif : 28 m³", "remarque": "Non modélisées."},
@@ -172,11 +221,28 @@ class H(BaseHTTPRequestHandler):
             if plan:
                 absents.append({"lot": "10 Faux plafonds", "article": "10.1", "ouvrage": "Faux plafonds en dalles minérales 600x600", "code": "FP-01", "info_quantite": "", "remarque": ""})
             absents.append({"lot": "12 VRD", "article": "12.1", "ouvrage": "Raccordements aux réseaux", "code": "", "info_quantite": "", "remarque": "Lot absent de la bibliothèque."})
+            if "ARTICLES DU DPGF DU PROJET" in tout:
+                articles = lire_articles_dpgf(user.split("=== CONSIGNES ===")[0])
+                for a in absents:
+                    if a["code"]:
+                        a["code"] = article_dpgf(a["code"], "", articles) or ""
             contenu = json.dumps({"absents": absents}, ensure_ascii=False)
         elif corps.get("response_format"):
             cctp = "Un CCTP du projet est fourni" in tout
             lignes = [l for l in user.split("GROUPES D'ÉLÉMENTS")[1].splitlines() if re.match(r"[GD]\d+ \|", l)]
             sortie = [e for e in (correspondre(l, cctp) for l in lignes) if e]
+            if "ARTICLES DU DPGF DU PROJET" in tout:
+                articles = lire_articles_dpgf(prefixe)
+                par_groupe = {l.split(" |")[0]: l for l in lignes}
+                for e in sortie:
+                    nouveaux = []
+                    for o in e["ouvrages"]:
+                        num = article_dpgf(o["code"], par_groupe.get(e["groupe"], ""), articles)
+                        if num:
+                            nouveaux.append({**o, "code": num})
+                    if e["ouvrages"] and not nouveaux:
+                        e["remarque"] = "Aucun article du DPGF ne décrit cet ouvrage."
+                    e["ouvrages"] = nouveaux
             if OUBLIER and len(sortie) > 1:
                 cle = sortie[-1]["groupe"]
                 if cle not in DEJA_OUBLIES:

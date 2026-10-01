@@ -12,6 +12,7 @@
 2. **Sources** :
    - une maquette **IFC** (IFC2x3 ou IFC4) ou un plan **DXF / DWG** ;
    - un **CCTP** facultatif (PDF, Word `.docx` ou texte) ;
+   - un **DPGF** facultatif (Excel `.xlsx`, de structure libre) ;
    - une **bibliothèque de prix** (CSV).
 3. **Métré**, calculé par le code sans IA.
    - **IFC** : jeux de quantités (`Qto_*`) regroupés par type, locaux (IfcSpace) et appareils sanitaires.
@@ -21,7 +22,18 @@
 6. **Questions libres** sur le chiffrage : « Quel impact si on passe les fenêtres en PVC ? », etc.
 7. **Visionneuse** : cliquez une ligne pour voir les objets concernés, ou un objet pour voir sa fiche et ses prix.
 8. **Ajustements en direct** : vous corrigez l'IA en quelques clics, par catégorie, par type ou objet par objet (voir ci-dessous). Le total se recalcule instantanément, sans appel à l'IA.
+9. **DPGF et CCTP du projet** : le DPGF fourni structure le chiffrage (voir ci-dessous).
 
+## Avec un DPGF et un CCTP
+
+Joignez le **DPGF** du projet (celui du maître d'œuvre, ou celui de l'entreprise) et son **CCTP** : le chiffrage suit alors leur organisation, **quelle qu'en soit la structure**.
+
+- **Lecture libre d'un DPGF Excel** : le code retrouve la ligne d'en-tête (même sur deux lignes), le rôle de chaque colonne (désignation, unité, quantité, prix, renvoi au CCTP…) et la hiérarchie (lots, chapitres) d'après la numérotation (`2.1.1`, `01.02.003`…), la mise en forme (gras, majuscules) ou les noms de feuilles. Il repère les lignes « pour mémoire » et les **options** (PSE, variantes), ignore les totaux, rattache les descriptions à leur article. Si l'en-tête est introuvable, l'IA aide ; sinon vous corrigez les colonnes dans « Vérifier ce que le code a compris ».
+- **Les articles du DPGF sont les lignes du chiffrage** : l'IA associe chaque élément de la maquette à un article du DPGF, jamais à un article inventé. Un élément sans article reste « non chiffré ». Un article sans élément dans la maquette reste dans l'estimation, « à établir » (avec la quantité du CCTP si elle y figure, ou celle du DPGF).
+- **Prix, au choix** : ceux du DPGF ; ou ceux du DPGF complétés par la bibliothèque (rapprochement automatique, signalé « à confirmer » quand il est douteux) ; ou **quantités seulement**.
+- **Le DPGF et le CCTP ne sont jamais modifiés.** Vous obtenez **deux fichiers** : votre DPGF **renseigné** (une copie : mise en page et formules conservées, quantités écrites dans ses colonnes, commentaire de traçabilité sur chaque cellule, onglet « SurveIA - traçabilité ») et l'**estimation SurveIA**, organisée par lots et chapitres du DPGF, options à part. Une quantité déjà présente dans le DPGF n'est jamais écrasée : l'écart avec le métré est signalé.
+- **Citations du CCTP vérifiées** : l'IA cite l'article et un extrait ; le code vérifie que l'article existe et que l'extrait figure **mot pour mot** dans le CCTP. Sinon la citation est signalée en rouge et la confiance plafonnée. Le fichier et l'empreinte du CCTP et du DPGF utilisés sont indiqués dans l'Excel.
+- Formats : `.xlsx` ; l'ancien `.xls` demande `pip install xlrd` (sinon, enregistrez-le en `.xlsx`).
 | Visionneuse 2D (plan DXF) | Vue en plan d'un niveau (IFC) |
 |---|---|
 | ![Plan 2D](docs/captures/plan_2d_portes.png) | ![Vue de dessus](docs/captures/vue_de_dessus_locaux.png) |
@@ -73,13 +85,16 @@ Les fichiers de démo décrivent un même petit immeuble de bureaux R+1, **enti�
 | `maquette_demo.ifc` | Maquette IFC4 : 100 éléments et 18 locaux |
 | `plan_RDC_demo.dxf` | Le rez-de-chaussée en DXF, avec calques, blocs et locaux |
 | `CCTP_demo.pdf` | Un CCTP de 3 pages. Il contient **volontairement** des contradictions avec la maquette et des ouvrages non modélisés |
+| `DPGF_demo.xlsx` | Un DPGF « maître d'œuvre » sans prix (26 articles, 9 lots, un article pour mémoire, une option), cohérent avec le CCTP |
+| `DPGF_demo_entreprise.xlsx` | Un DPGF d'une **autre structure** (page de garde, une feuille par lot, sans numéros, prix et quelques quantités déjà renseignés) |
 | `bibliotheque_prix.csv` | 33 prix **fictifs** |
 
 Scénarios conseillés :
 
 1. **Maquette + CCTP** : les articles cités et les écarts apparaissent en rouge. Dans l'Excel, saisissez 28 m³ de fondations : le total se met à jour.
 2. **Plan DXF + CCTP** : le même bâtiment en 2D.
-3. **Effet mémoire** : relancez le calcul ou changez la hauteur des murs. Le résultat est instantané, sans nouvel appel à l'IA.
+3. **DPGF + CCTP** : chargez les deux démos, puis changez de mode de prix. Dans l'Excel du DPGF renseigné, les formules d'origine sont intactes. Essayez aussi le DPGF d'entreprise : même fonctionnement avec une structure très différente.
+4. **Effet mémoire** : relancez le calcul ou changez la hauteur des murs. Le résultat est instantané, sans nouvel appel à l'IA.
 
 ## Utiliser vos propres données
 
@@ -95,6 +110,7 @@ L'API DeepSeek est hébergée en Chine. Voici ce qui lui est envoyé :
 
 - les **noms** de types, calques, blocs et matériaux, avec les quantités mesurées ;
 - les désignations de la bibliothèque de prix ;
+- les **articles du DPGF** (numéro, lot, désignation, unité, description) s'il est fourni, **sans aucun prix ni quantité** ;
 - **le texte complet du CCTP**, s'il est fourni.
 
 Les fichiers IFC et DXF eux-mêmes ne sont jamais envoyés. **Vérifiez que c'est compatible avec vos engagements de confidentialité**, en particulier pour le CCTP. Voir aussi [SECURITY.md](SECURITY.md).
@@ -106,6 +122,8 @@ Les fichiers IFC et DXF eux-mêmes ne sont jamais envoyés. **Vérifiez que c'es
 | `chiffrage_ia.py` | Serveur local, lecture IFC et métré, appels à l'IA, estimation, export Excel |
 | `lecture_dxf.py` | Lecture DXF (et DWG par conversion) : métré 2D et dessin pour la visionneuse |
 | `lecture_cctp.py` | Lecture des CCTP (PDF, `.docx`, `.txt`) |
+| `lecture_dpgf.py` | Lecture d'un DPGF Excel de structure libre, et écriture du DPGF renseigné (copie) |
+| `liaison_dpgf.py` | Articles du DPGF → lignes de chiffrage, modes de prix, vérification des citations du CCTP |
 | `geometrie_ifc.py` | Formes 3D des éléments IFC : extrusions, polyèdres, maillages IFC4, types partagés, découpes |
 | `interface.html`, `visionneuse.js` | Interface web et visionneuse (WebGL 2 pour la 3D, SVG pour les plans), sans bibliothèque externe |
 | `donnees_locales/` | Créé à l'usage : vos modifications par fichier et vos choix retenus (jamais publié) |
@@ -117,13 +135,15 @@ Dépendances : `openpyxl` (Excel) et `pypdf` (CCTP en PDF). Les lecteurs IFC et 
 ## Tests
 
 ```bash
-python3 tests/test_bout_en_bout.py          # 76 vérifications, environ une minute
+python3 tests/test_bout_en_bout.py          # 124 vérifications, environ une minute
+python3 tests/test_interface.py             # interface dans un vrai navigateur (facultatif : pip install playwright)
 ```
 
 Les tests n'ont besoin **ni de clé API ni de réseau**. Un faux DeepSeek local (`tests/faux_deepseek.py`) imite le modèle, y compris ses défauts : réponses tronquées, groupes oubliés, paramètre refusé. Sont vérifiés :
 
 - le métré et l'estimation ;
 - les ajustements manuels (objets, types, quantités, annuler / rétablir, sauvegarde, apprentissage) ;
+- les DPGF (plusieurs structures, trois modes de prix, DPGF renseigné sans toucher au fichier d'origine) et la vérification des citations du CCTP ;
 - les montants de l'Excel ;
 - la mémoire des correspondances ;
 - la sécurité (requêtes d'autres sites refusées) ;
@@ -139,6 +159,7 @@ C'est un POC, pas un outil de production :
 - visionneuse : réservations non percées ; formes NURBS et révolutions non dessinées (elles restent dans le métré) ;
 - DXF binaire et PDF scannés non lus ;
 - les correspondances proposées par l'IA doivent être relues par un économiste ;
+- DPGF : seul Excel est lu (pas de PDF) ; les prix rapprochés d'une bibliothèque sont indicatifs ; les quantités du DPGF ne sont jamais écrasées, même quand elles diffèrent du métré ;
 - plans 2D : un calque se chiffre en entier (seuls les blocs et les locaux se choisissent un par un).
 
 Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique des versions.

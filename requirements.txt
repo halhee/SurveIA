@@ -1,3 +1,4 @@
 # Dépendances du POC Chiffrage IA (Python 3.9 ou plus récent)
 openpyxl>=3.1          # export Excel
 pypdf>=6.19.0          # lecture des CCTP en PDF — versions antérieures : failles de déni de service
+# xlrd>=2.0          # facultatif : lire d'anciens DPGF .xls (sinon, les enregistrer en .xlsx)

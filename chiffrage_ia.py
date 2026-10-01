@@ -39,7 +39,9 @@ from urllib.parse import parse_qs, urlparse
 
 import geometrie_ifc
 import lecture_cctp
+import lecture_dpgf
 import lecture_dxf
+import liaison_dpgf
 
 warnings.filterwarnings("ignore", message=".*ARC4.*")  # avertissement sans conséquence de pypdf
 DOSSIER = os.path.dirname(os.path.abspath(__file__))
@@ -710,8 +712,10 @@ def lire_json(texte):
 
 # Toutes les demandes commencent par le même préfixe (CCTP puis bibliothèque de prix) et les consignes
 # viennent APRÈS : DeepSeek met ce préfixe en cache et facture les appels suivants beaucoup moins cher.
-def prefixe_commun(cctp, biblio_txt):
-    return entete_cctp(cctp) + "BIBLIOTHÈQUE DE PRIX (code | lot | désignation | unité)\n" + biblio_txt + "\n\n"
+def prefixe_commun(cctp, biblio_txt, dpgf=False):
+    titre = ("ARTICLES DU DPGF DU PROJET (code | lot › chapitre | désignation | unité | description | réf. CCTP)" if dpgf
+             else "BIBLIOTHÈQUE DE PRIX (code | lot | désignation | unité)")
+    return entete_cctp(cctp) + titre + "\n" + biblio_txt + "\n\n"
 
 
 def message_ia(prefixe, consigne, donnees):
@@ -752,6 +756,17 @@ Pour les groupes de maquette IFC (G01, G02...), mets "nature": "".
 Réponds uniquement avec un objet JSON de la forme :
 {"correspondances": [{"groupe": "G01", "nature": "", "ouvrages": [{"code": "GO-01", "confiance": "haute", "justification": "..."}], "remarque": ""}]}"""
 
+CONSIGNE_DPGF = """
+
+IMPORTANT : la liste fournie plus haut n'est pas une bibliothèque de prix mais le DPGF du projet (document contractuel
+du maître d'œuvre) : chaque ligne est un article à chiffrer, et le « code » est le numéro de l'article du DPGF.
+- Choisis les articles du DPGF qui décrivent l'ouvrage ; n'invente aucun article et n'en propose jamais en dehors de la liste.
+- Si aucun article du DPGF ne décrit l'élément, renvoie une liste vide et dis-le dans "remarque" : on ne crée pas d'article.
+- Un article marqué [OPTION] (prestation supplémentaire, variante) ne se choisit que si l'élément correspond
+  explicitement à cette option ; un article [POUR MÉMOIRE] ne se choisit jamais.
+- Quand l'article du DPGF renvoie à un article du CCTP (« réf. CCTP »), il décrit le même ouvrage : sers-t'en.
+- La description d'un article précise ses prescriptions : tiens-en compte pour choisir entre deux articles proches."""
+
 CONSIGNE_CCTP = """
 
 Un CCTP du projet est fourni au début du message. Il est contractuel : en cas de contradiction avec la maquette
@@ -774,6 +789,10 @@ faux plafonds, équipements...). Ignore les généralités et les prestations ho
 Pour chacun : "lot", "article" (numéro), "ouvrage" (courte description), "code" (ligne de la bibliothèque qui conviendrait,
 ou "" s'il n'y en a pas), "info_quantite" (quantité indiquée au CCTP, recopiée telle quelle, ou ""), "remarque" (courte).
 N'invente aucune quantité. Réponds uniquement en JSON : {"absents": [{"lot": "", "article": "", "ouvrage": "", "code": "", "info_quantite": "", "remarque": ""}]}"""
+
+CONSIGNE_ABSENTS_DPGF = """
+Ici la « bibliothèque » est le DPGF du projet : "code" est le numéro d'un article du DPGF. Si un ouvrage du CCTP n'a aucun article
+dans le DPGF, renvoie "code": "" et précise-le dans "remarque" : on ne crée pas d'article."""
 
 CONSIGNE_QUESTION = """Réponds à la question de l'utilisateur en français, de façon concise et concrète.
 Tu disposes, dans les données, du métré de la maquette ou du plan et de l'estimation calculée ; la bibliothèque
@@ -915,11 +934,13 @@ def associer_prix(cle, modele, metre, bibliotheque, params=None, cctp=None, refl
     """Demande à l'IA les correspondances manquantes (en parallèle, par paquets), puis calcule l'estimation."""
     progres = progres or (lambda texte: None)
     codes = {p["code"]: p for p in bibliotheque}
-    biblio_txt = "\n".join("%s | %s | %s | %s" % (p["code"], p["lot"], p["designation"], p["unite"]) for p in bibliotheque)
-    prefixe = prefixe_commun(cctp, biblio_txt)
+    avec_dpgf = any(p.get("dpgf") for p in bibliotheque)
+    biblio_txt = (liaison_dpgf.texte_pour_ia(bibliotheque) if avec_dpgf else
+                  "\n".join("%s | %s | %s | %s" % (p["code"], p["lot"], p["designation"], p["unite"]) for p in bibliotheque))
+    prefixe = prefixe_commun(cctp, biblio_txt, avec_dpgf)
     groupes = metre["groupes"]
     origine = "DU PLAN 2D" if metre.get("source") == "dxf" else "DE LA MAQUETTE"
-    consigne = CONSIGNE_CORRESPONDANCE + (CONSIGNE_CCTP if cctp else "")
+    consigne = CONSIGNE_CORRESPONDANCE + (CONSIGNE_DPGF if avec_dpgf else "") + (CONSIGNE_CCTP if cctp else "")
     max_jetons = 32000 if reflexion else 8000
     contexte_memoire = (VERSION_CONSIGNES, modele, reflexion, empreinte(cctp["texte"]) if cctp else "", empreinte(biblio_txt))
     cles = {g["id"]: empreinte(*contexte_memoire, decrire_groupe(g, avec_id=False)) for g in groupes}
@@ -973,7 +994,7 @@ def associer_prix(cle, modele, metre, bibliotheque, params=None, cctp=None, refl
                 if isinstance(c, dict) and str(c.get("groupe", "")).strip() in ids}
 
     def demander_absents():
-        rep = discuter(cle, modele, message_ia(prefixe, CONSIGNE_ABSENTS, "ÉLÉMENTS PRÉSENTS DANS " +
+        rep = discuter(cle, modele, message_ia(prefixe, CONSIGNE_ABSENTS + (CONSIGNE_ABSENTS_DPGF if avec_dpgf else ""), "ÉLÉMENTS PRÉSENTS DANS " +
                                                 origine.replace("DU ", "LE ").replace("DE LA ", "LA ") + "\n" + presents),
                        True, reflexion, max_jetons)
         compter(rep)
@@ -1050,7 +1071,7 @@ def associer_prix(cle, modele, metre, bibliotheque, params=None, cctp=None, refl
 # Tout est recalculé par le code, sans rappeler l'IA. Les ajustements sont des données simples (codes
 # de prix par groupe et par objet), sauvegardées par maquette et annulables.
 
-RANG_CONFIANCE = {"validée": -2, "manuelle": -1, "haute": 0, "moyenne": 1, "faible": 2}
+RANG_CONFIANCE = {"validée": -2, "manuelle": -1, "haute": 0, "moyenne": 1, "faible": 2, "à établir": 3}
 MAX_CODES = 6  # lignes de prix au plus pour un même groupe ou objet
 
 
@@ -1145,6 +1166,7 @@ def calculer_estimation(metre, bibliotheque, correspondances, absents, params=No
     aj = normaliser_ajustements(ajustements)
     unites = unites or {}
     codes = {p["code"]: p for p in bibliotheque}
+    avec_dpgf = any(p.get("dpgf") for p in bibliotheque)
     groupes = metre["groupes"]
     plan = metre.get("source") == "dxf"
     lignes, non_chiffres, ignores, exclus = {}, [], [], []
@@ -1162,6 +1184,7 @@ def calculer_estimation(metre, bibliotheque, correspondances, absents, params=No
             "pu": p["pu"], "quantite": 0.0, "qte_manquante": False, "groupes": [], "elements": [], "sources": [],
             "confiance": "validée", "justifications": [], "remarques": [], "hypotheses": [],
             "articles": [], "ecarts": [], "origines": set(),
+            **{k: p[k] for k in liaison_dpgf.CHAMPS_DPGF if k in p},
         })
 
     for g in groupes:
@@ -1229,7 +1252,13 @@ def calculer_estimation(metre, bibliotheque, correspondances, absents, params=No
                     conf = conf if conf in ("haute", "moyenne", "faible") else "moyenne"
                     article = str(o.get("article_cctp") or "").strip()
                     if cctp and article and not any(a["numero"] == article for a in ligne["articles"]):
-                        ligne["articles"].append({"numero": article, "extrait": " ".join(str(o.get("extrait_cctp") or "").split()[:25])})
+                        extrait = " ".join(str(o.get("extrait_cctp") or "").split()[:25])
+                        verifie, motif = liaison_dpgf.verifier_citation(cctp, article, extrait)
+                        ligne["articles"].append({"numero": article, "extrait": extrait, "verifie": verifie, "motif": motif})
+                        if not verifie:
+                            ligne["remarques"].append("Citation du CCTP non vérifiée (art. %s) : %s" % (article, motif))
+                            if conf == "haute":
+                                conf = "moyenne"
                     ecart = str(c.get("ecart_cctp") or "").strip()
                     if cctp and ecart and ecart not in ligne["ecarts"]:
                         ligne["ecarts"].append(ecart)
@@ -1279,6 +1308,36 @@ def calculer_estimation(metre, bibliotheque, correspondances, absents, params=No
             nouvelle_ligne(codes[code])["origines"].add("manuel")
             lignes[code]["confiance"] = "manuelle"
 
+    # DPGF : tous les articles figurent dans l'estimation, même sans élément de la maquette (à établir)
+    if avec_dpgf:
+        for p in bibliotheque:
+            if p["code"] not in lignes:
+                l = nouvelle_ligne(p)
+                l["confiance"] = "manuelle" if p.get("pm") else "à établir"
+                l["qte_manquante"] = not p.get("pm")
+                l["aucun_element"] = True
+        for a in absents or []:  # ouvrage du CCTP absent de la maquette et présent au DPGF : l'info va sur l'article
+            l = lignes.get(a.get("code"))
+            if l is not None and l.get("aucun_element"):
+                l["remarques"].append("Ouvrage décrit au CCTP%s, absent de la maquette%s" % (
+                    (" (art. %s)" % a["article"]) if a.get("article") else "",
+                    (" — quantité indiquée au CCTP : %s" % a["info_quantite"]) if a.get("info_quantite") else ""))
+        for l in lignes.values():
+            if l.get("aucun_element") and not l["sources"] and not l.get("pm") and l["code"] not in aj["quantites"] \
+                    and l.get("quantite_dpgf") is not None:
+                l["quantite"], l["qte_manquante"] = float(l["quantite_dpgf"]), False
+                l["remarques"].append("Aucun élément de la maquette : quantité reprise telle quelle du DPGF")
+                l["qte_reprise_dpgf"] = True
+            if l.get("cctp_ref") and cctp and cctp.get("articles"):
+                inconnus = [n for n in liaison_dpgf.numeros_cites(l["cctp_ref"])
+                            if n not in {a["numero"].strip(". ") for a in cctp["articles"]}]
+                if inconnus:
+                    l["remarques"].append("Le DPGF renvoie à l'article %s du CCTP, introuvable dans le CCTP fourni" % ", ".join(inconnus))
+            if l.get("prix_remarque"):
+                l["remarques"].append(l["prix_remarque"])
+            if l.get("sans_prix") and not l["pu_source"].startswith("Sans prix"):
+                l["remarques"].append(l["pu_source"])
+
     resultat = []
     for l in lignes.values():
         l["quantite"] = round(l["quantite"], 3)
@@ -1289,6 +1348,13 @@ def calculer_estimation(metre, bibliotheque, correspondances, absents, params=No
         else:
             l["qte_manuelle"] = False
         l["total"] = round(l["quantite"] * l["pu"], 2)
+        qd = l.get("quantite_dpgf")
+        if qd is not None and l["sources"] and not l["qte_manquante"]:
+            ecart = l["quantite"] - float(qd)
+            if abs(ecart) > max(0.01, 0.02 * abs(float(qd))):
+                l["ecart_dpgf"] = round(ecart, 3)
+                l["remarques"].append("Quantité du DPGF : %s %s ; métré SurveIA : %s (écart %+.0f %%)" % (
+                    fr(float(qd), 2), l["unite"], fr(l["quantite"], 2), 100 * ecart / float(qd) if qd else 0))
         l["justification"] = " ".join(dict.fromkeys(l.pop("justifications")))
         l["remarque"] = " ; ".join(dict.fromkeys(l.pop("remarques")))
         l["hypothese"] = " ; ".join(dict.fromkeys(l.pop("hypotheses")))
@@ -1301,10 +1367,11 @@ def calculer_estimation(metre, bibliotheque, correspondances, absents, params=No
         l["a_verifier"] = l["confiance"] not in ("validée",) and (
             l["confiance"] not in ("haute", "manuelle") or l["qte_manquante"] or bool(l["remarque"]) or bool(l["ecarts"]))
         resultat.append(l)
-    resultat.sort(key=lambda l: (l["lot"], l["code"]))
+    resultat.sort(key=(lambda l: (l.get("ordre", 0), l["code"])) if avec_dpgf else (lambda l: (l["lot"], l["code"])))
 
     codes_saisis = {s.get("code") for s in aj["supplements"]}
-    absents_affiches = [{**a, "chiffre": bool(a.get("code")) and a.get("code") in codes_saisis} for a in (absents or [])]
+    absents_affiches = [{**a, "chiffre": bool(a.get("code")) and a.get("code") in codes_saisis} for a in (absents or [])
+                        if not (avec_dpgf and a.get("code"))]
     return {
         "source": metre.get("source", "ifc"),
         "cctp": {k: cctp[k] for k in ("fichier", "nb_pages", "nb_articles", "tronque")} if cctp else None,
@@ -1322,7 +1389,9 @@ def calculer_estimation(metre, bibliotheque, correspondances, absents, params=No
         "journal": aj["journal"][-200:],
         "nb_ajustements": len(aj["groupes"]) + len(aj["unites"]) + len(aj["quantites"]) + len(aj["supplements"]) + len(aj["natures"]),
         "params": params if plan else None,
-        "total_ht": round(sum(l["total"] for l in resultat), 2),
+        "total_ht": round(sum(l["total"] for l in resultat if not l.get("option")), 2),
+        "total_options": round(sum(l["total"] for l in resultat if l.get("option")), 2),
+        "dpgf": avec_dpgf,
         "tva": 0.20,
     }
 
@@ -1686,7 +1755,7 @@ def repondre_question(cle, modele, question, metre, estimation, bibliotheque, cc
 # « = » vient d'un fichier (nom d'objet IFC, calque, CCTP, bibliothèque) ou de l'IA : on le force en texte,
 # sinon Excel l'exécuterait à l'ouverture (« injection de formule »).
 FORMULES_AUTORISEES = re.compile(
-    r"^=(IFERROR\(INDEX\('Bibliothèque de prix'!\$E\$2:\$E\$\d+,MATCH\(B\d+,'Bibliothèque de prix'!\$A\$2:\$A\$\d+,0\)\),0\)"
+    r"^=(IFERROR\(INDEX\('(?:Bibliothèque de prix|Prix du DPGF)'!\$E\$2:\$E\$\d+,MATCH\(B\d+,'(?:Bibliothèque de prix|Prix du DPGF)'!\$A\$2:\$A\$\d+,0\)\),0\)"
     r"|F\d+\*G\d+|SUM\(H\d+:H\d+\)|H\d+(\+H\d+)*|H\d+\*H\d+)$")
 
 
@@ -1699,7 +1768,7 @@ def neutraliser_formules(wb):
                     c.data_type = "s"
 
 
-def exporter_excel(metre, estimation, bibliotheque, modele):
+def exporter_excel(metre, estimation, bibliotheque, modele, cctp=None, dpgf=None):
     from openpyxl import Workbook
     from openpyxl.comments import Comment
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -1717,7 +1786,10 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
     jaune = PatternFill("solid", fgColor="FFFF00")
     conf_fill = {"haute": PatternFill("solid", fgColor="D9EAD3"), "moyenne": PatternFill("solid", fgColor="FCE5CD"),
                  "faible": PatternFill("solid", fgColor="F4CCCC"), "manuelle": PatternFill("solid", fgColor="DDEBF7"),
-                 "validée": PatternFill("solid", fgColor="A9D08E")}
+                 "validée": PatternFill("solid", fgColor="A9D08E"), "à établir": PatternFill("solid", fgColor="FFE699")}
+    avec_dpgf = bool(estimation.get("dpgf"))
+    feuille_prix = "Prix du DPGF" if avec_dpgf else "Bibliothèque de prix"
+    f_prix = "'%s'" % feuille_prix
     fin = Side(style="thin", color="BFBFBF")
     bord = Border(left=fin, right=fin, top=fin, bottom=fin)
     EUR = '#,##0.00 "€";-#,##0.00 "€";"-"'
@@ -1728,22 +1800,23 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
 
     # ---- Onglet Bibliothèque de prix (source des prix unitaires) ----
     wbib = wb.active
-    wbib.title = "Bibliothèque de prix"
-    en_tetes = ["Code", "Lot", "Désignation", "Unité", "PU HT (€)"]
+    wbib.title = feuille_prix
+    en_tetes = ["Code", "Lot", "Désignation", "Unité", "PU HT (€)"] + (["Source du prix"] if avec_dpgf else [])
     wbib.append(en_tetes)
     for p in bibliotheque:
-        wbib.append([p["code"], p["lot"], p["designation"], p["unite"], p["pu"]])
+        wbib.append([p["code"], p["lot"], p["designation"], p["unite"], p["pu"]] + ([p.get("pu_source", "")] if avec_dpgf else []))
     for c in wbib[1]:
         c.font, c.fill, c.border = entete_font, entete_fill, bord
     for ligne in wbib.iter_rows(min_row=2):
         for c in ligne:
             c.font, c.border = normal, bord
         ligne[4].font, ligne[4].number_format = bleu, EUR
-    for col, larg in zip("ABCDE", (10, 30, 60, 8, 14)):
+    for col, larg in zip("ABCDEF", (10, 30, 60, 8, 14, 60)):
         wbib.column_dimensions[col].width = larg
     wbib.freeze_panes = "A2"
     n_bib = len(bibliotheque) + 1
     wbib.cell(row=n_bib + 2, column=1, value=("Prix fictifs, à usage de démonstration uniquement. " if estimation.get("prix_fictifs") else "")
+              + ("Articles et prix du DPGF fournis (le DPGF d'origine n'est pas modifié). " if avec_dpgf else "")
               + "Modifiez les prix en bleu : l'estimation se met à jour automatiquement.").font = Font(name=POLICE, italic=True, color="7F7F7F")
 
     # ---- Onglet Estimation ----
@@ -1753,11 +1826,15 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
     ws["A2"] = ("Générée le %s par SurveIA (correspondance des prix : %s). "
                 "Métré calculé par le code ; %s.%s" % (
                     datetime.now().strftime("%d/%m/%Y %H:%M"), modele,
-                    "prix de démonstration fictifs" if estimation.get("prix_fictifs") else "prix issus de la bibliothèque fournie",
-                    (" CCTP pris en compte : %s." % estimation["cctp"]["fichier"]) if estimation.get("cctp") else ""))
+                    "prix de démonstration fictifs" if estimation.get("prix_fictifs") else (
+                        ("prix : " + liaison_dpgf.LIBELLES_MODE.get((dpgf or {}).get("mode_prix"), "")) if avec_dpgf and dpgf else
+                        "prix issus de la bibliothèque fournie"),
+                    ((" CCTP pris en compte : %s%s." % (estimation["cctp"]["fichier"], " (empreinte %s)" % cctp["empreinte"]
+                                                        if cctp and cctp.get("empreinte") else "")) if estimation.get("cctp") else "")
+                    + ((" DPGF : %s (empreinte %s), articles non modifiés." % (dpgf["fichier"], dpgf["empreinte"][:12])) if avec_dpgf and dpgf else "")))
     ws["A2"].font = Font(name=POLICE, italic=True, color="7F7F7F")
-    ws["A3"] = ("Légende : texte bleu = valeur modifiable ; texte vert = prix lu dans l'onglet « Bibliothèque de prix » ; "
-                "fond jaune = quantité à saisir ; colonne « Confiance / statut » : fiabilité de la correspondance proposée par l'IA, "
+    ws["A3"] = ("Légende : texte bleu = valeur modifiable ; texte vert = prix lu dans l'onglet « " + feuille_prix + " » ; "
+                "fond jaune = quantité à saisir ; colonne « Confiance / statut » : fiabilité de la correspondance proposée par l'IA (« à établir » : article du DPGF sans élément dans la maquette), "
                 "« manuelle » si vous l'avez choisie, « validée » si vous l'avez relue.")
     ws["A3"].font = Font(name=POLICE, size=9, color="595959")
 
@@ -1772,49 +1849,77 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
     r += 1
 
     sous_totaux = []
-    par_lot = defaultdict(list)
-    for l in estimation["lignes"]:
-        par_lot[l["lot"]].append(l)
-    for lot in sorted(par_lot):
+
+    def ecrire_ligne(l, lot):
+        nonlocal r
+        articles = []
+        for a in l.get("articles", []):
+            articles.append("CCTP art. %s : « %s »%s" % (a["numero"], a["extrait"], (
+                "  ⚠ non retrouvé dans le CCTP (%s)" % a["motif"]) if a.get("verifie") is False else ""))
+        valeurs = [lot, l["code"], l["designation"], "\n".join(l["elements"]), l["unite"], None, None, None,
+                   ("option — " if l.get("option") else "pour mémoire — " if l.get("pm") else "") + l["confiance"],
+                   "\n".join(x for x in (
+                       l["justification"], "\n".join(articles),
+                       ("Réf. CCTP du DPGF : " + l["cctp_ref"]) if l.get("cctp_ref") else "",
+                       "\n".join("⚠ Écart avec le CCTP : " + e for e in l.get("ecarts", [])),
+                       ("⚠ " + l["remarque"]) if l["remarque"] else "",
+                       ("Calcul : " + l["hypothese"]) if l.get("hypothese") else "",
+                       ("Prix : " + l["pu_source"]) if l.get("pu_source") and l["pu_source"] != "Prix du DPGF" else "") if x)]
+        for j, v in enumerate(valeurs, 1):
+            c = ws.cell(row=r, column=j, value=v)
+            c.font, c.border, c.alignment = normal, bord, haut
+        q = ws.cell(row=r, column=6, value=round(l["quantite"], 3) if not l["qte_manquante"] or l["quantite"] else 0)
+        q.font, q.number_format = bleu, QTE
+        if l["qte_manquante"] and not l["quantite"]:
+            q.fill = jaune
+            q.comment = Comment("Quantité absente de la maquette : à saisir.", "SurveIA")
+        elif l.get("qte_manuelle"):
+            q.comment = Comment("Quantité saisie à la main%s." % (
+                " (métré calculé : %s %s)" % (fr(l["quantite_calculee"], 3), l["unite"]) if l.get("quantite_calculee") is not None else ""), "SurveIA")
+        elif l.get("qte_reprise_dpgf"):
+            q.comment = Comment("Quantité reprise du DPGF : aucun élément de la maquette.", "SurveIA")
+        pu = ws.cell(row=r, column=7, value="=IFERROR(INDEX(%s!$E$2:$E$%d,MATCH(B%d,%s!$A$2:$A$%d,0)),0)" % (f_prix, n_bib, r, f_prix, n_bib))
+        pu.font, pu.number_format = vert, EUR
+        tot = ws.cell(row=r, column=8, value="=F%d*G%d" % (r, r))
+        tot.font, tot.number_format = normal, EUR
+        ws.cell(row=r, column=9).fill = conf_fill[l["confiance"]]
+        r += 1
+
+    def ecrire_lot(lot, lignes_lot, titre_fill=lot_fill, compter=True):
+        """Un lot : ligne de titre, (chapitres du DPGF), lignes, sous-total."""
+        nonlocal r
         ws.cell(row=r, column=1, value=lot).font = gras
         for j in range(1, 11):
-            ws.cell(row=r, column=j).fill = lot_fill
+            ws.cell(row=r, column=j).fill = titre_fill
             ws.cell(row=r, column=j).border = bord
         r += 1
-        premiere = r
-        for l in par_lot[lot]:
-            valeurs = [lot, l["code"], l["designation"], "\n".join(l["elements"]), l["unite"], None, None, None,
-                       l["confiance"], "\n".join(x for x in (
-                           l["justification"],
-                           "\n".join("CCTP art. %s : « %s »" % (a["numero"], a["extrait"]) for a in l.get("articles", [])),
-                           "\n".join("⚠ Écart avec le CCTP : " + e for e in l.get("ecarts", [])),
-                           ("⚠ " + l["remarque"]) if l["remarque"] else "",
-                           ("Calcul : " + l["hypothese"]) if l.get("hypothese") else "") if x)]
-            for j, v in enumerate(valeurs, 1):
-                c = ws.cell(row=r, column=j, value=v)
-                c.font, c.border, c.alignment = normal, bord, haut
-            q = ws.cell(row=r, column=6, value=round(l["quantite"], 3) if not l["qte_manquante"] or l["quantite"] else 0)
-            q.font, q.number_format = bleu, QTE
-            if l["qte_manquante"] and not l["quantite"]:
-                q.fill = jaune
-                q.comment = Comment("Quantité absente de la maquette : à saisir.", "SurveIA")
-            elif l.get("qte_manuelle"):
-                q.comment = Comment("Quantité saisie à la main%s." % (
-                    " (métré calculé : %s %s)" % (fr(l["quantite_calculee"], 3), l["unite"]) if l.get("quantite_calculee") is not None else ""), "SurveIA")
-            pu = ws.cell(row=r, column=7, value="=IFERROR(INDEX('Bibliothèque de prix'!$E$2:$E$%d,MATCH(B%d,'Bibliothèque de prix'!$A$2:$A$%d,0)),0)" % (n_bib, r, n_bib))
-            pu.font, pu.number_format = vert, EUR
-            tot = ws.cell(row=r, column=8, value="=F%d*G%d" % (r, r))
-            tot.font, tot.number_format = normal, EUR
-            ws.cell(row=r, column=9).fill = conf_fill[l["confiance"]]
-            r += 1
+        premiere, chapitre = r, None
+        for l in lignes_lot:
+            if avec_dpgf and (l.get("chapitre") or "") != chapitre and l.get("chapitre"):
+                chapitre = l["chapitre"]
+                ws.cell(row=r, column=3, value=chapitre).font = Font(name=POLICE, bold=True, italic=True)
+                for j in range(1, 11):
+                    ws.cell(row=r, column=j).border = bord
+                r += 1
+            ecrire_ligne(l, lot)
         ws.cell(row=r, column=7, value="Sous-total").font = gras
         st = ws.cell(row=r, column=8, value="=SUM(H%d:H%d)" % (premiere, r - 1))
         st.font, st.number_format = gras, EUR
         for j in range(1, 11):
             ws.cell(row=r, column=j).fill = total_fill
             ws.cell(row=r, column=j).border = bord
-        sous_totaux.append("H%d" % r)
+        if compter:
+            sous_totaux.append("H%d" % r)
         r += 2
+
+    lignes_base = [l for l in estimation["lignes"] if not l.get("option")]
+    lignes_options = [l for l in estimation["lignes"] if l.get("option")]
+    par_lot = defaultdict(list)
+    for l in lignes_base:
+        par_lot[l["lot"]].append(l)
+    # DPGF : lots dans l'ordre du DPGF ; sinon ordre alphabétique des lots de la bibliothèque
+    for lot in (list(par_lot) if avec_dpgf else sorted(par_lot)):
+        ecrire_lot(lot, par_lot[lot])
 
     # Ouvrages du CCTP absents de la maquette mais présents dans la bibliothèque : de vraies lignes,
     # quantité à 0 sur fond jaune. L'économiste la saisit et le total se met à jour.
@@ -1838,7 +1943,7 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
             q = ws.cell(row=r, column=6, value=0)
             q.font, q.number_format, q.fill = bleu, QTE, jaune
             q.comment = Comment("Ouvrage décrit au CCTP mais absent de la maquette : saisissez la quantité.", "SurveIA")
-            pu = ws.cell(row=r, column=7, value="=IFERROR(INDEX('Bibliothèque de prix'!$E$2:$E$%d,MATCH(B%d,'Bibliothèque de prix'!$A$2:$A$%d,0)),0)" % (n_bib, r, n_bib))
+            pu = ws.cell(row=r, column=7, value="=IFERROR(INDEX(%s!$E$2:$E$%d,MATCH(B%d,%s!$A$2:$A$%d,0)),0)" % (f_prix, n_bib, r, f_prix, n_bib))
             pu.font, pu.number_format = vert, EUR
             tot = ws.cell(row=r, column=8, value="=F%d*G%d" % (r, r))
             tot.font, tot.number_format = normal, EUR
@@ -1870,6 +1975,14 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
     c = ws.cell(row=r, column=8, value="=H%d+H%d" % (ligne_ht, r - 1))
     c.font, c.number_format = gras, EUR
     r += 2
+    if lignes_options:
+        par_option = defaultdict(list)
+        for l in lignes_options:
+            par_option[l["lot"]].append(l)
+        ws.cell(row=r, column=1, value="Options et prestations supplémentaires (non incluses dans le total ci-dessus)").font = Font(name=POLICE, bold=True, color="C55A11")
+        r += 1
+        for lot, lst in par_option.items():
+            ecrire_lot(lot, lst, PatternFill("solid", fgColor="FCE4D6"), compter=False)
 
     if estimation["non_chiffres"]:
         ws.cell(row=r, column=1, value="Éléments non chiffrés (à traiter)").font = Font(name=POLICE, bold=True, color="C00000")
@@ -1883,7 +1996,8 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
         r += 1
     hors_biblio = [a for a in estimation.get("absents") or [] if not a.get("code")]
     if hors_biblio:
-        ws.cell(row=r, column=1, value="Ouvrages décrits au CCTP, absents de la maquette et sans ligne dans la bibliothèque"
+        ws.cell(row=r, column=1, value="Ouvrages décrits au CCTP, absents de la maquette et sans article dans le DPGF" if avec_dpgf else
+                "Ouvrages décrits au CCTP, absents de la maquette et sans ligne dans la bibliothèque"
                 ).font = Font(name=POLICE, bold=True, color="C55A11")
         r += 1
         for a in hors_biblio:
@@ -2008,7 +2122,7 @@ def exporter_excel(metre, estimation, bibliotheque, modele):
 # =============================================================================
 
 ETAT = {"cle": None, "modele": "deepseek-flash", "metre": None, "estimation": None, "cctp": None,
-        "bibliotheque": None, "nom_biblio": None,
+        "bibliotheque": None, "nom_biblio": None, "dpgf": None,
         # ajustements manuels : objets chiffrables, décisions de l'utilisateur, annuler / rétablir,
         # et ce qu'il faut pour recalculer l'estimation sans rappeler l'IA
         "unites": {}, "ajustements": ajustements_vides(), "historique": [], "refaire": [], "calcul": None}
@@ -2059,7 +2173,7 @@ def recalculer_estimation():
     c = ETAT.get("calcul")
     if not c or not ETAT["metre"] or c["metre"] is not ETAT["metre"]:
         return None
-    est = calculer_estimation(ETAT["metre"], ETAT["bibliotheque"], c["correspondances"], c["absents"], c["params"],
+    est = calculer_estimation(ETAT["metre"], bibliotheque_active(), c["correspondances"], c["absents"], c["params"],
                               c["cctp"], ETAT["ajustements"], ETAT["unites"])
     est.update(c["infos"])
     ETAT["estimation"] = est
@@ -2083,6 +2197,9 @@ def resume_ajustements():
 
 def prix_fictifs():
     """Vrai tant que c'est la bibliothèque d'exemple (prix inventés) qui est chargée."""
+    d = ETAT.get("dpgf")
+    if d:  # prix de la bibliothèque d'exemple utilisés seulement si le mode les demande
+        return d["mode_prix"] == "bibliotheque" and ETAT.get("biblio_exemple", False)
     return ETAT.get("biblio_exemple", False)
 
 
@@ -2093,11 +2210,111 @@ def charger_bibliotheque_defaut():
     ETAT["biblio_exemple"] = True
 
 
+# ---- DPGF : fichier Excel de structure libre, lu par le code (l'IA aide seulement si l'en-tête est introuvable) ----
+TAILLE_MAX_DPGF = 60 * 10**6
+
+CONSIGNE_ENTETE_DPGF = """On te donne l'extrait d'une feuille Excel d'un DPGF (décomposition du prix global et forfaitaire) : numéro de ligne,
+puis les cellules « LETTRE=valeur ». Repère la ligne d'en-tête du tableau et la colonne de chaque rôle :
+"numero" (n° ou repère de l'article), "designation", "unite", "quantite", "pu" (prix unitaire), "total", "cctp" (renvoi à un article du CCTP).
+Omets les rôles absents ; n'invente rien. Réponds uniquement en JSON :
+{"ligne": 7, "colonnes": {"numero": "A", "designation": "B", "unite": "C", "quantite": "D", "pu": "E", "total": "F"}}"""
+
+
+def aide_lecture_ia(cle, modele):
+    """Fonction passée au lecteur de DPGF pour les feuilles dont l'en-tête n'est pas reconnu (une demande par feuille)."""
+    def aide(feuille, extrait):
+        messages = [{"role": "system", "content": SYSTEME},
+                    {"role": "user", "content": CONSIGNE_ENTETE_DPGF + "\n\nEXTRAIT DE FEUILLE DPGF « %s »\n%s" % (feuille, extrait)}]
+        d = lire_json(discuter(cle, modele, messages, True, False, 1500).texte)
+        colonnes = {k: str(v).strip().upper() for k, v in (d.get("colonnes") or {}).items()
+                    if k in lecture_dpgf.ROLES and re.fullmatch(r"[A-Za-z]{1,3}", str(v).strip())}
+        return int(d.get("ligne")), colonnes
+    return aide
+
+
+def bibliotheque_active():
+    """Lignes à chiffrer : les articles du DPGF s'il y en a un, sinon la bibliothèque de prix."""
+    d = ETAT.get("dpgf")
+    return d["catalogue"] if d else ETAT["bibliotheque"]
+
+
+def reconstruire_dpgf():
+    """Recalcule les lignes issues du DPGF (mode de prix, bibliothèque) ; l'estimation est à refaire (à appeler sous VERROU)."""
+    d = ETAT.get("dpgf")
+    if d:
+        d["catalogue"] = liaison_dpgf.catalogue(d["analyse"], d["mode_prix"], ETAT["bibliotheque"])
+    ETAT["estimation"], ETAT["calcul"] = None, None
+
+
+def mode_prix_conseille(analyse):
+    return "dpgf" if analyse["part_prix"] >= 0.5 else "aucun"
+
+
+def charger_dpgf(contenu, nom, forcer=None, mode_prix=None):
+    if not contenu:
+        raise ValueError("Fichier vide.")
+    if len(contenu) > TAILLE_MAX_DPGF:
+        raise ValueError("Fichier DPGF trop volumineux (%d Mo au plus)." % (TAILLE_MAX_DPGF // 10**6))
+    aide = aide_lecture_ia(ETAT["cle"], ETAT["modele"]) if ETAT.get("cle") else None
+    analyse = lecture_dpgf.analyser(contenu, nom, forcer, aide)
+    mode = mode_prix if mode_prix in liaison_dpgf.MODES_PRIX else mode_prix_conseille(analyse)
+    with VERROU:
+        ETAT["dpgf"] = {"fichier": nom, "contenu": contenu, "empreinte": hashlib.sha1(contenu).hexdigest(),
+                        "analyse": analyse, "forcer": forcer or {}, "mode_prix": mode, "catalogue": []}
+        reconstruire_dpgf()
+    return resume_dpgf()
+
+
+def resume_dpgf():
+    d = ETAT.get("dpgf")
+    if not d:
+        return None
+    a = d["analyse"]
+    cat = d["catalogue"]
+    return {"fichier": d["fichier"], "mode_prix": d["mode_prix"], "mode_conseille": mode_prix_conseille(a),
+            "nb_articles": a["nb_articles"], "nb_lots": a["nb_lots"], "lots": a["lots"], "nb_titres": a["nb_titres"],
+            "nb_pm": a["nb_pm"], "nb_options": a["nb_options"], "part_prix": a["part_prix"], "part_quantites": a["part_quantites"],
+            "feuilles": a["feuilles"], "feuilles_ignorees": a["feuilles_ignorees"], "avertissements": a["avertissements"],
+            "nb_sans_prix": sum(1 for p in cat if p.get("sans_prix") and not p["pu_source"].startswith("Sans prix")),
+            "empreinte": d["empreinte"][:12]}
+
+
+def dpgf_rempli(d, estimation):
+    """Le DPGF d'origine, rempli : quantités (et prix de la bibliothèque si demandés) dans ses propres colonnes."""
+    valeurs, trace = {}, []
+    articles = {a["code"]: a for a in d["analyse"]["articles"]}
+    for l in estimation["lignes"]:
+        a = articles.get(l["code"])
+        if not a:
+            continue
+        sans_qte = l["qte_manquante"] and not l["quantite"] and not l.get("pm")
+        commentaire = "SurveIA : " + ("quantité à établir (aucun élément de la maquette)" if sans_qte else
+                                      "%s %s calculés sur la maquette" % (fr(l["quantite"], 2), l["unite"]))
+        if l.get("quantite_dpgf") is not None and not sans_qte:
+            commentaire += ". Quantité du DPGF conservée : %s %s" % (fr(float(l["quantite_dpgf"]), 2), l["unite"])
+        if l["elements"]:
+            commentaire += ".\nÉléments : " + " ; ".join(l["elements"][:8])
+        if not l.get("pm"):
+            valeurs[l["code"]] = {"quantite": None if sans_qte else l["quantite"],
+                                  "pu": l["pu"] if not l.get("sans_prix") and l["pu_source"].startswith("Bibliothèque") else None,
+                                  "commentaire": commentaire, "source_prix": l["pu_source"]}
+        trace.append({"feuille": a["feuille"], "ligne": a["ligne"], "numero": a["numero"], "designation": a["designation"],
+                      "unite": l["unite"], "quantite": None if sans_qte else l["quantite"], "quantite_dpgf": a["quantite_dpgf"],
+                      "pu": None if l.get("sans_prix") else l["pu"], "source_prix": l["pu_source"],
+                      "sources": "\n".join(l["elements"]),
+                      "statut": ("pour mémoire" if l.get("pm") else "option" if l.get("option") else l["confiance"])
+                                + ((" — " + l["remarque"]) if l["remarque"] else "")})
+    corps, _ = lecture_dpgf.remplir(d["contenu"], d["fichier"], d["analyse"], valeurs, trace,
+                                    "bibliotheque" if d["mode_prix"] == "bibliotheque" else d["mode_prix"])
+    base = re.sub(r"[^A-Za-z0-9_-]+", "_", os.path.splitext(d["fichier"])[0])
+    return corps, "DPGF_renseigne_" + base + ".xlsx"
+
+
 def resume_cctp():
     c = ETAT.get("cctp")
     if not c:
         return None
-    return {k: c[k] for k in ("fichier", "nb_pages", "nb_mots", "nb_articles", "lots", "articles", "tronque")}
+    return {k: c.get(k) for k in ("fichier", "nb_pages", "nb_mots", "nb_articles", "lots", "articles", "tronque", "empreinte")}
 
 
 CONNEXION_COUPEE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
@@ -2196,13 +2413,13 @@ class Gestionnaire(BaseHTTPRequestHandler):
         elif url.path == "/api/etat":
             self._json({"cle_ok": bool(ETAT["cle"]), "modele": ETAT["modele"], "modeles": MODELES,
                         "bibliotheque": {"nom": ETAT["nom_biblio"], "nb": len(ETAT["bibliotheque"] or [])},
-                        "cctp": resume_cctp(), "memoire": MEMOIRE.taille(), "corrections": len(CORRECTIONS.tout())})
+                        "cctp": resume_cctp(), "dpgf": resume_dpgf(), "memoire": MEMOIRE.taille(), "corrections": len(CORRECTIONS.tout())})
         elif url.path == "/api/unites":
             # objets d'un groupe, avec leurs quantités et leurs lignes de prix actuelles
             gid = parse_qs(url.query).get("groupe", [""])[0]
             with VERROU:
                 c = ETAT.get("calcul")
-                codes = {p["code"]: p for p in ETAT["bibliotheque"] or []}
+                codes = {p["code"]: p for p in bibliotheque_active() or []}
                 corr = c["correspondances"] if c else {}
                 liste = [{"id": u, **{k: v[k] for k in ("nom", "niveau", "surface", "volume", "longueur")},
                           "codes": codes_de_unite(u, ETAT["ajustements"], corr, codes, ETAT["unites"]),
@@ -2210,9 +2427,28 @@ class Gestionnaire(BaseHTTPRequestHandler):
                          for u, v in ETAT["unites"].items() if v["g"] == gid]
             liste.sort(key=lambda x: (x["niveau"], x["nom"]))
             self._json(liste[:5000])
+        elif url.path == "/api/dpgf/apercu":
+            d = ETAT.get("dpgf")
+            if not d:
+                return self._erreur("Aucun DPGF chargé.", 404)
+            self._json({"resume": resume_dpgf(), "roles": [[r, lecture_dpgf.LIBELLES_ROLES[r]] for r in lecture_dpgf.ROLES],
+                        "feuilles": lecture_dpgf.apercu(d["analyse"], d["contenu"], d["fichier"]),
+                        "articles": [{k: p.get(k) for k in ("code", "lot", "chapitre", "designation", "unite", "pu", "pu_source",
+                                                           "quantite_dpgf", "pm", "option", "cctp_ref")} for p in d["catalogue"]]})
+        elif url.path == "/api/dpgf/rempli":
+            d = ETAT.get("dpgf")
+            if not d or not ETAT["estimation"]:
+                return self._erreur("Lancez d'abord le chiffrage avec un DPGF chargé.")
+            corps, nom = dpgf_rempli(d, ETAT["estimation"])
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % nom)
+            self.send_header("Content-Length", str(len(corps)))
+            self.end_headers()
+            self.wfile.write(corps)
         elif url.path == "/api/bibliotheque/liste":
             # pour choisir une ligne de prix à la main (recherche dans l'interface)
-            self._json([{k: p[k] for k in ("code", "lot", "designation", "unite", "pu")} for p in ETAT["bibliotheque"] or []])
+            self._json([{k: p[k] for k in ("code", "lot", "designation", "unite", "pu")} for p in bibliotheque_active() or []])
         elif url.path in ("/visionneuse.js",):
             with open(os.path.join(DOSSIER, url.path.lstrip("/")), "rb") as f:
                 corps = f.read()
@@ -2245,7 +2481,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         elif url.path == "/api/excel":
             if not ETAT["estimation"]:
                 return self._erreur("Aucune estimation à exporter.")
-            corps = exporter_excel(ETAT["metre"], ETAT["estimation"], ETAT["bibliotheque"], ETAT["modele"])
+            corps = exporter_excel(ETAT["metre"], ETAT["estimation"], bibliotheque_active(), ETAT["modele"], ETAT.get("cctp"), ETAT.get("dpgf"))
             nom = "Estimation_" + re.sub(r"[^A-Za-z0-9_-]+", "_", os.path.splitext(ETAT["metre"]["fichier"])[0]) + ".xlsx"
             self.send_response(200)
             self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -2305,12 +2541,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     else:
                         nouveau = copy.deepcopy(avant)
                         texte = appliquer_ajustement(nouveau, d, ETAT["metre"], ETAT["calcul"]["correspondances"],
-                                                     ETAT["bibliotheque"], ETAT["unites"])
+                                                     bibliotheque_active(), ETAT["unites"])
                         ETAT["historique"].append(avant)
                         del ETAT["historique"][:-HISTORIQUE_MAX]
                         ETAT["refaire"] = []
                         ETAT["ajustements"] = nouveau
-                    CORRECTIONS.modifier(*corrections_changees(avant, ETAT["ajustements"], ETAT["metre"], ETAT["bibliotheque"]))
+                    CORRECTIONS.modifier(*corrections_changees(avant, ETAT["ajustements"], ETAT["metre"], bibliotheque_active()))
                     sauver_ajustements()
                     est = recalculer_estimation()
                     est["historique"] = resume_ajustements()
@@ -2318,6 +2554,46 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
             if url.path == "/api/corrections_vider":
                 CORRECTIONS.vider()
+                return self._json({"ok": True})
+
+            if url.path == "/api/dpgf":
+                demo = params.get("demo", [""])[0]
+                if demo:
+                    nom = "DPGF_demo_entreprise.xlsx" if demo == "entreprise" else "DPGF_demo.xlsx"
+                    with open(os.path.join(DOSSIER, nom), "rb") as f:
+                        contenu = f.read()
+                else:
+                    contenu, nom = self._corps(), os.path.basename(params.get("nom", ["dpgf.xlsx"])[0]) or "dpgf.xlsx"
+                if os.path.splitext(nom)[1].lower() not in (".xlsx", ".xlsm", ".xls"):
+                    return self._erreur("Format non pris en charge : le DPGF doit être un fichier Excel (.xlsx ou .xls).")
+                return self._json(charger_dpgf(contenu, nom, None, params.get("mode", [None])[0]))
+
+            if url.path == "/api/dpgf_reglages":
+                # correction de la lecture (colonnes, ligne d'en-tête) et choix du mode de prix, sans recharger le fichier
+                d = json.loads(self._corps() or b"{}")
+                actuel = ETAT.get("dpgf")
+                if not actuel:
+                    return self._erreur("Aucun DPGF chargé.")
+                mode = d.get("mode_prix") or actuel["mode_prix"]
+                if mode not in liaison_dpgf.MODES_PRIX:
+                    return self._erreur("Mode de prix inconnu.")
+                forcer = d.get("forcer")
+                if forcer is None:
+                    with VERROU:
+                        actuel["mode_prix"] = mode
+                        reconstruire_dpgf()
+                    return self._json(resume_dpgf())
+                propre = {}
+                for feuille, v in (forcer or {}).items():
+                    cols = {k: str(x).strip().upper() for k, x in (v.get("colonnes") or {}).items()
+                            if k in lecture_dpgf.ROLES and re.fullmatch(r"[A-Za-z]{1,3}", str(x).strip())}
+                    propre[str(feuille)] = {"entete": int(v.get("entete") or 1), "colonnes": cols}
+                return self._json(charger_dpgf(actuel["contenu"], actuel["fichier"], {**actuel["forcer"], **propre}, mode))
+
+            if url.path == "/api/dpgf_retirer":
+                with VERROU:
+                    ETAT["dpgf"] = None
+                    ETAT["estimation"], ETAT["calcul"] = None, None
                 return self._json({"ok": True})
 
             if not self._exiger_cle():
@@ -2331,7 +2607,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     ETAT["bibliotheque"] = lire_bibliotheque(contenu)
                     ETAT["nom_biblio"] = params.get("nom", ["bibliotheque.csv"])[0]
                     ETAT["biblio_exemple"] = False
-                ETAT["estimation"], ETAT["calcul"] = None, None
+                with VERROU:
+                    reconstruire_dpgf()
                 return self._json({"nom": ETAT["nom_biblio"], "nb": len(ETAT["bibliotheque"])})
 
             if url.path == "/api/cctp":
@@ -2341,6 +2618,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 else:
                     contenu, nom = self._corps(), params.get("nom", ["cctp.pdf"])[0]
                 cctp = lecture_cctp.lire_cctp(contenu, nom)
+                cctp["empreinte"] = hashlib.sha1(contenu).hexdigest()[:12]  # preuve de la version du CCTP utilisée
                 with VERROU:
                     ETAT["cctp"], ETAT["estimation"], ETAT["calcul"] = cctp, None, None
                 return self._json(resume_cctp())
@@ -2413,14 +2691,15 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     return self._erreur("Hauteur des murs peu plausible : indiquez une valeur entre 1 et 20 m.")
                 reflexion = bool(d.get("reflexion"))
                 forcer = bool(d.get("forcer"))
-                cle, modele, metre, biblio, cctp = ETAT["cle"], ETAT["modele"], ETAT["metre"], ETAT["bibliotheque"], ETAT["cctp"]
+                cle, modele, metre, biblio, cctp = ETAT["cle"], ETAT["modele"], ETAT["metre"], bibliotheque_active(), ETAT["cctp"]
+                infos_dpgf = resume_dpgf()
 
                 def chiffrer(progres):
                     t0 = time.time()
                     est = associer_prix(cle, modele, metre, biblio, reglages, cctp, reflexion, progres, forcer)
                     infos = {k: est[k] for k in ("appels", "jetons_entree", "jetons_sortie", "jetons_cache", "depuis_memoire",
                                                  "nb_groupes", "decoupages", "relances")}
-                    infos.update({"prix_fictifs": prix_fictifs(), "duree": round(time.time() - t0, 1),
+                    infos.update({"prix_fictifs": prix_fictifs(), "dpgf_info": infos_dpgf, "duree": round(time.time() - t0, 1),
                                   "modele": modele + (" (réflexion)" if reflexion else "")})
                     with VERROU:
                         if ETAT["metre"] is not metre:
@@ -2446,7 +2725,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 if not q:
                     return self._erreur("Question vide.")
                 cle, modele, metre, est = ETAT["cle"], ETAT["modele"], ETAT["metre"], ETAT["estimation"]
-                biblio, cctp, fictifs = ETAT["bibliotheque"], ETAT["cctp"], prix_fictifs()
+                biblio, cctp, fictifs = bibliotheque_active(), ETAT["cctp"], prix_fictifs()
                 reflexion = bool(d.get("reflexion"))
 
                 def repondre(progres):
@@ -2542,6 +2821,18 @@ def diagnostic():
         ligne(True, "CCTP de démo : %d articles repérés" % c["nb_articles"])
     except Exception as e:
         ligne(False, "CCTP de démo : %s" % e)
+
+    try:
+        for nom in ("DPGF_demo.xlsx", "DPGF_demo_entreprise.xlsx"):
+            dp = lecture_dpgf.analyser(open(os.path.join(DOSSIER, nom), "rb").read(), nom)
+            ligne(dp["nb_articles"] > 10, "%s : %d articles, %d lots lus" % (nom, dp["nb_articles"], dp["nb_lots"]))
+        try:
+            import xlrd  # noqa: F401
+            print("  [info]   xlrd présent : les anciens DPGF .xls sont lus")
+        except ImportError:
+            print("  [info]   xlrd absent (facultatif) : un DPGF .xls est à enregistrer en .xlsx, ou : python3 -m pip install xlrd")
+    except Exception as e:
+        ligne(False, "DPGF de démo : %s: %s" % (type(e).__name__, e), "fichiers du dossier incomplets ? re-décompressez le zip")
 
     oda = lecture_dxf.trouver_oda()
     print("  [info]   Conversion DWG : %s" % (("ODA File Converter trouvé (%s)" % oda) if oda else

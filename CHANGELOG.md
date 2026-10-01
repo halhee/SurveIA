@@ -1,5 +1,14 @@
 # Historique des versions
 
+## Version 7 — DPGF et CCTP du projet
+- **DPGF Excel de structure libre** : le code retrouve l'en-tête, les colonnes, les lots et chapitres (numérotation, mise en forme, feuilles), les articles « pour mémoire », les options et les prix ou quantités déjà présents. Lecture vérifiable et corrigeable dans l'interface ; aide de l'IA si l'en-tête est introuvable.
+- **Les articles du DPGF deviennent les lignes du chiffrage** : l'IA ne peut choisir que des articles existants ; ceux sans élément dans la maquette restent « à établir » ; ordre, lots et chapitres du DPGF conservés ; options comptées à part.
+- **Trois modes de prix** : prix du DPGF, DPGF complété par la bibliothèque (rapprochement automatique « à confirmer »), ou quantités seulement.
+- **Sorties** : le **DPGF renseigné** (copie du fichier d'origine, formules et mise en page conservées, commentaires de traçabilité, onglet de traçabilité) et l'estimation SurveIA organisée comme le DPGF. Le DPGF et le CCTP ne sont jamais modifiés ; une quantité déjà présente au DPGF n'est jamais écrasée.
+- **Citations du CCTP vérifiées** : article existant et extrait retrouvé mot pour mot, sinon signalé et confiance plafonnée. Fichier et empreinte du CCTP et du DPGF indiqués dans l'Excel.
+- Correction : le bouton « Télécharger l'estimation Excel » ne réagissait plus depuis la version 6 ; un test de l'interface dans un navigateur (`tests/test_interface.py`) l'empêche de se reproduire.
+- Démos : `DPGF_demo.xlsx` et `DPGF_demo_entreprise.xlsx` (`outils/generer_dpgf.py`).
+
 ## Version 6 — ajustements en direct
 - **Corriger l'IA en quelques clics**, depuis le métré ou la visionneuse :
   - sélection par type, par catégorie, par niveau ou objet par objet (<kbd>Maj</kbd>+clic dans la vue 3D / 2D) ;

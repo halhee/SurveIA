@@ -63,7 +63,7 @@ def evaluer_estimation(chemin):
     pour vérifier les montants sans Excel ni LibreOffice. Renvoie (valeurs, nb_formules, nb_erreurs)."""
     from openpyxl import load_workbook
     wb = load_workbook(chemin)
-    bib = {r[0]: r[4] for r in wb["Bibliothèque de prix"].iter_rows(min_row=2, values_only=True) if r[0]}
+    bib = {r[0]: r[4] for r in wb["Prix du DPGF" if "Prix du DPGF" in wb.sheetnames else "Bibliothèque de prix"].iter_rows(min_row=2, values_only=True) if r[0]}
     ws = wb["Estimation"]
     brut = {c.coordinate: c.value for ligne in ws.iter_rows() for c in ligne}
     cache, erreurs, nb = {}, [0], [0]
@@ -386,9 +386,143 @@ def ajust():
     verifier(e4["total_ht"] == e2["total_ht"], "retour à la nature proposée par l'IA")
 
 
+def dpgf():
+    from openpyxl import Workbook, load_workbook
+    import hashlib
+    j("/api/cle", {"cle": "sk-test-1234567890"})
+    print("== DPGF Excel : trame du maître d'œuvre (sans prix) + CCTP")
+    orig = open(os.path.join(APP, "DPGF_demo.xlsx"), "rb").read()
+    d = j("/api/dpgf?demo=1", brut=b"")
+    verifier(d.get("nb_articles") == 26 and d.get("nb_lots") == 9, "26 articles et 9 lots lus (%s / %s)" % (d.get("nb_articles"), d.get("nb_lots")))
+    verifier(d.get("nb_pm") == 1 and d.get("nb_options") == 1, "1 article « pour mémoire » et 1 option repérés")
+    verifier(d.get("mode_prix") == "aucun" and d.get("mode_conseille") == "aucun", "DPGF sans prix : mode « quantités seulement » proposé")
+    ap = j("/api/dpgf/apercu")
+    verifier(len(ap["articles"]) == 26 and ap["feuilles"][0]["lignes"], "aperçu ligne par ligne disponible")
+    j("/api/cctp?demo=1", brut=b"")
+    tache("/api/metre?demo=ifc")
+    e = tache("/api/chiffrer", {"hauteur": 2.7})
+    L = lignes(e)
+    verifier(e["dpgf"] and "2.2.1" in L and "GO-06" not in L, "les lignes chiffrées sont les articles du DPGF")
+    verifier(L["2.2.1"]["quantite"] > 0 and L["2.2.1"]["unite"] == "m2", "dallage 2.2.1 : %s m² issus de la maquette" % L["2.2.1"]["quantite"])
+    verifier(e["lignes"][0]["code"] == "2.1.1" and [l["ordre"] for l in e["lignes"]] == sorted(l["ordre"] for l in e["lignes"]), "ordre du DPGF respecté")
+    verifier(len(e["lignes"]) == 26, "les 26 articles figurent, même sans élément dans la maquette (%d)" % len(e["lignes"]))
+    verifier(L["2.1.1"]["confiance"] == "à établir" and L["2.1.1"]["qte_manquante"] and L["2.1.1"]["a_verifier"], "semelles 2.1.1 : « à établir »")
+    verifier("quantité indiquée au CCTP" in L["2.1.1"]["remarque"].lower() or "28" in L["2.1.1"]["remarque"], "info du CCTP (28 m³) portée sur l'article")
+    verifier(L["11.1.3"]["pm"] and not L["11.1.3"]["a_verifier"], "article PM : pas de relance inutile")
+    verifier(L["9.3.1"]["option"] and e["total_ht"] == 0 and "total_options" in e, "option comptée à part")
+    verifier(not any(a.get("code") for a in e["absents"]), "ouvrages du CCTP liés au DPGF : plus de doublon « à compléter »")
+    verifier(any(not a.get("code") for a in e["absents"]), "ouvrage du CCTP sans article au DPGF signalé (raccordements)")
+    cite = L["8.1.1"]["articles"][0] if L["8.1.1"]["articles"] else {}
+    verifier(cite.get("verifie") is False and "non vérifiée" in L["8.1.1"]["remarque"] and L["8.1.1"]["confiance"] != "haute", "citation inventée du CCTP détectée (garde-corps)")
+    verifier(L["2.3.1"]["articles"] and L["2.3.1"]["articles"][0]["verifie"] is True, "citation exacte du CCTP vérifiée (voiles, art. %s)" % L["2.3.1"]["articles"][0]["numero"])
+
+    print("== Mode de prix : bibliothèque (rapprochement automatique)")
+    d2 = j("/api/dpgf_reglages", {"mode_prix": "bibliotheque"})
+    verifier(d2["mode_prix"] == "bibliotheque" and j("/api/etat")["dpgf"]["mode_prix"] == "bibliotheque", "mode changé sans recharger le fichier")
+    e2 = tache("/api/chiffrer", {"hauteur": 2.7})
+    verifier(e2["appels"] == 0, "changer le mode de prix ne redemande rien à l'IA")
+    L2 = lignes(e2)
+    verifier(L2["2.2.1"]["pu"] == 58 and "GO-06" in L2["2.2.1"]["pu_source"], "dallage : prix 58 € repris de la bibliothèque (GO-06)")
+    verifier(L2["6.1.1"]["pu"] == 390 and "à confirmer" in L2["6.1.1"]["remarque"], "rapprochement douteux (âme pleine / alvéolaire) signalé « à confirmer »")
+    verifier(e2["total_ht"] > 0 and e2["prix_fictifs"], "total calculé avec les prix d'exemple, signalés fictifs : %s €" % e2["total_ht"])
+    r, chemin = excel_recalcule("dpgf_bib.xlsx")
+    wbx = load_workbook(chemin)
+    verifier(r["total_errors"] == 0 and abs(total_ht(chemin) - e2["total_ht"]) < 0.01, "SurveIA Excel recalculé = estimation (%s €)" % e2["total_ht"])
+    verifier("Prix du DPGF" in wbx.sheetnames, "onglet « Prix du DPGF »")
+    texte = " ".join(str(c) for row in wbx["Estimation"].iter_rows(values_only=True) for c in row if c)
+    verifier("LOT 02" in texte and "2.1 Fondations" in texte and "Options et prestations" in texte, "Excel organisé par lots, chapitres et options du DPGF")
+    verifier("empreinte" in texte and "DPGF_demo.xlsx" in texte, "fichiers CCTP et DPGF identifiés dans l'Excel")
+    code, rempli = req("/api/dpgf/rempli")
+    chemin_r = os.path.join(TMP, "dpgf_rempli.xlsx"); open(chemin_r, "wb").write(rempli)
+    wo, wr = load_workbook(__import__("io").BytesIO(orig)), load_workbook(chemin_r)
+    formules_ok = all(wr[ws.title][c.coordinate].value == c.value for ws in wo.worksheets for row in ws.iter_rows() for c in row
+                      if c.data_type == "f")
+    verifier(formules_ok and sum(1 for ws in wo.worksheets for row in ws.iter_rows() for c in row if c.data_type == "f") > 3, "formules du DPGF d'origine conservées")
+    ws_o, ws_r = wo["DPGF"], wr["DPGF"]
+    verifier(ws_r.column_dimensions["B"].width == ws_o.column_dimensions["B"].width and ws_r.merged_cells.ranges == ws_o.merged_cells.ranges, "mise en page conservée")
+    trouve = [(row[0].row, row) for row in ws_r.iter_rows() if any(c.value == "2.2.1" for c in row)]
+    verifier(trouve and any(isinstance(c.value, (int, float)) and abs(c.value - L2["2.2.1"]["quantite"]) < 0.01 for c in trouve[0][1]), "quantité du dallage écrite dans la colonne Quantité du DPGF")
+    verifier(any(c.comment and "SurveIA" in c.comment.text for c in trouve[0][1]), "commentaire de traçabilité sur la cellule")
+    verifier(any(isinstance(c.value, (int, float)) and c.value == 58 for c in trouve[0][1]), "prix de bibliothèque écrit (le DPGF n'en avait pas)")
+    verifier("SurveIA - traçabilité" in wr.sheetnames, "onglet de traçabilité ajouté")
+    verifier(hashlib.sha1(orig).hexdigest() == hashlib.sha1(open(os.path.join(APP, "DPGF_demo.xlsx"), "rb").read()).hexdigest(), "fichier DPGF d'origine inchangé sur le disque")
+
+    print("== Ajustements sur un article du DPGF")
+    def ajuster(corps):
+        r = j("/api/ajuster", corps)
+        return r["estimation"] if "estimation" in r else r
+    ea = ajuster({"action": "supplement", "code": "2.1.1", "valeur": 28, "libelle": "Fondations (CCTP 2.1)"})
+    verifier(not isinstance(ea, dict) or "erreur" not in ea, "ajustement accepté sur un article du DPGF")
+    verifier(lignes(ea)["2.1.1"]["quantite"] == 28 and lignes(ea)["2.1.1"]["confiance"] == "manuelle", "28 m³ saisis sur l'article 2.1.1")
+
+    print("== DPGF d'entreprise : autre structure, prix et quantités déjà renseignés")
+    d3 = j("/api/dpgf?demo=entreprise", brut=b"")
+    verifier(d3["nb_articles"] == 15 and d3["mode_prix"] == "dpgf" and d3["part_prix"] == 1.0, "autre structure lue : 15 articles, prix du DPGF utilisés")
+    e3 = tache("/api/chiffrer", {"hauteur": 2.7})
+    L3 = lignes(e3)
+    verifier(L3["Lot 02 GO l.7"]["pu"] == 61 and L3["Lot 02 GO l.7"]["quantite"] > 0, "dallage chiffré au prix du DPGF (61 €)")
+    verifier(not e3["prix_fictifs"], "aucun prix fictif en mode DPGF")
+    sem = L3["Lot 02 GO l.13"]
+    verifier(sem.get("qte_reprise_dpgf") and sem["quantite"] == 28, "semelles : aucun élément maquette, quantité du DPGF reprise (28 m³)")
+    verifier(any("Aucun article du DPGF" in n["raison"] for n in e3["non_chiffres"]), "éléments sans article au DPGF laissés non chiffrés (pas d'article inventé)")
+    code, rempli = req("/api/dpgf/rempli")
+    chemin_r = os.path.join(TMP, "dpgf_rempli2.xlsx"); open(chemin_r, "wb").write(rempli)
+    wr = load_workbook(chemin_r)
+    cellule = next(c for ws in wr.worksheets if ws.title.startswith("Lot 02") for row in ws.iter_rows() for c in row if c.value == 240)
+    verifier(cellule.value == 240, "quantité 240 du DPGF jamais écrasée")
+    verifier(cellule.comment is not None and "SurveIA" in cellule.comment.text, "mais commentée avec le métré SurveIA")
+
+    print("== Autres structures de DPGF")
+    from openpyxl.styles import Font
+    wb = Workbook(); ws = wb.active; ws.title = "Bordereau"
+    for ligne in (["Art.", "Libellé", "U", "Qté", "P.U. HT", "Montant HT"], ["LOT 01 - TERRASSEMENTS"],
+                  ["01.01", "Décapage terre végétale ép. 30 cm", "m2"], ["01.02", "Fouilles en rigole", "m3"],
+                  ["", "Total lot 01", None, None, None, "=SUM(F3:F4)"], ["LOT 02 - GROS OEUVRE"],
+                  ["02.01.001", "Semelles filantes BA", "m3"], ["02.01.002", "Voile BA 20 cm", "m2"]):
+        ws.append(ligne)
+    tampon = __import__("io").BytesIO(); wb.save(tampon)
+    da = j("/api/dpgf?nom=bordereau.xlsx", brut=tampon.getvalue())
+    verifier(da.get("nb_articles") == 4 and da.get("nb_lots") == 2, "numérotation 01.01 / lots « LOT 0x » : 4 articles, 2 lots (total ignoré)")
+    wb = Workbook(); ws = wb.active; ws.title = "Offre prix"
+    ws["A2"] = "Société XYZ – cadre de décomposition"
+    for col, t in zip("ABCDE", ("Désignation des ouvrages", "Unité", "Quantité", "PU", "Total")):
+        ws[col + "12"] = t
+    r = 13
+    for titre, items in (("Structure", [("Dalle béton armé 20 cm", "m2"), ("Poteaux BA", "m3")]), ("Cloisons", [("Cloison 72/48", "m2"), ("Porte 83", "u")])):
+        ws.cell(row=r, column=1, value=titre).font = Font(bold=True); r += 1
+        for des, u in items:
+            ws.cell(row=r, column=1, value=des); ws.cell(row=r, column=2, value=u); r += 1
+    tampon = __import__("io").BytesIO(); wb.save(tampon)
+    db = j("/api/dpgf?nom=offre_prix.xlsx", brut=tampon.getvalue())
+    verifier(db.get("nb_articles") == 4 and db.get("nb_lots") == 2, "sans numéros, en-tête en ligne 12, titres en gras : 4 articles, 2 lots")
+
+    print("== DPGF sans en-tête et texte piégé")
+    wb = Workbook(); ws = wb.active; ws.title = "Offre"
+    ws.append(["Mon bordereau"]); ws.append(["1", "Dallage béton armé ép. 15 cm", "m2", 100, 55])
+    ws.append(["2", "Voile béton armé ép. 20 cm", "m2", 40, 160])
+    ws.append(["3", "Poteaux", "m3", 3, 900])
+    ws.cell(row=2, column=2).value = "=cmd|' /C calc'!A0 Dallage béton armé ép. 15 cm"
+    ws.cell(row=2, column=2).data_type = "s"
+    tampon = __import__("io").BytesIO(); wb.save(tampon)
+    d4 = j("/api/dpgf?nom=offre.xlsx", brut=tampon.getvalue())
+    verifier(d4.get("nb_articles") == 3, "DPGF sans en-tête lu d'après son contenu (%s articles)" % d4.get("nb_articles"))
+    e4 = tache("/api/chiffrer", {"hauteur": 2.7})
+    code, b = req("/api/excel")
+    chemin = os.path.join(TMP, "piege.xlsx"); open(chemin, "wb").write(b)
+    wbp = load_workbook(chemin)
+    piege = [c for w in wbp.worksheets for row in w.iter_rows() for c in row if "cmd|" in str(c.value)]
+    verifier(piege and all(c.data_type != "f" for c in piege), "texte « =cmd… » du DPGF présent mais neutralisé dans l'Excel (%d cellule(s))" % len(piege))
+    err = j("/api/dpgf?nom=notes.txt", brut=b"abc")
+    verifier("erreur" in err, "fichier qui n'est pas un Excel refusé")
+    err = j("/api/dpgf?nom=vide.xlsx", brut=b"")
+    verifier("erreur" in err, "fichier vide refusé")
+    j("/api/dpgf_retirer", {})
+    verifier(j("/api/etat")["dpgf"] is None, "DPGF retiré : retour à la bibliothèque")
+
+
 SCENARIOS = {  # nom : (fonction, variables d'environnement du faux DeepSeek)
     "vis": (vis, {}), "base": (base, {}), "tronque": (tronque, {"TRONQUER": "5"}), "oublie": (oublie, {"OUBLIER": "1"}),
-    "repli": (repli, {"REFUSER_THINKING": "1"}), "ajust": (ajust, {}), "gros": (gros, {}),
+    "repli": (repli, {"REFUSER_THINKING": "1"}), "ajust": (ajust, {}), "dpgf": (dpgf, {}), "gros": (gros, {}),
 }
 
 
